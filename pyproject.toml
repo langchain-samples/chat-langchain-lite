@@ -1,5 +1,5 @@
 [project]
-name = "chat-langchain-lite-agent"
+name = "chat-lc-lite-agent"
 version = "0.1.0"
 description = "Chat LangChain Lite — a LangChain ecosystem chatbot with intentional bugs, built to demo LangSmith Engine"
 requires-python = ">=3.11"

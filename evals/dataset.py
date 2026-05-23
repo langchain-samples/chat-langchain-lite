@@ -1,67 +1,186 @@
-"""LangSmith dataset management for the Chat LangChain Lite demo."""
+"""LangSmith dataset management for the Chat LangChain Lite demo.
 
-import os
+Examples use the same `assertions` format that Engine emits when it
+proposes adding generated examples to a dataset — so Engine's suggestions
+slot in alongside our seed examples and the same evaluator scores
+everything uniformly.
+
+Format:
+    {
+        "input":  {"question": "..."},
+        "output": {
+            "assertions": [
+                {"key": "must_X", "comment": "human-readable success criterion"},
+                ...
+            ]
+        },
+        "metadata": {...}
+    }
+
+The seed dataset only contains POSITIVE examples (LangChain questions the
+agent should handle well). The "decline off-topic" examples are intentionally
+left out so that Engine's proposal to add them has visible impact when
+evaluated in CI.
+"""
+
 from langsmith import Client
 from langsmith.schemas import DataType
 
-_demo_user = os.getenv("DEMO_USER", "").strip()
-DATASET_NAME = f"chat-langchain-lite-demo-dataset-{_demo_user}" if _demo_user else "chat-langchain-lite-demo-dataset"
+import os
+
+# Presenter suffix — scopes every dataset/project/Context-Hub-repo name so
+# multiple demoers in the same LangSmith workspace don't collide. Set via
+# DEMO_PRESENTER env var (local `.env`) or GitHub repository variable
+# (CI). Defaults to "robert" if not set.
+DEMO_PRESENTER = os.getenv("DEMO_PRESENTER", "robert").strip() or "robert"
+
+DATASET_NAME = f"chat-lc-lite-scope-{DEMO_PRESENTER}"
+TOOL_ADHERENCE_DATASET_NAME = f"chat-lc-lite-tools-{DEMO_PRESENTER}"
 
 EXAMPLES = [
+    # All seed assertions are LOW-BAR — the buggy agent passes them. The
+    # demo narrative is: "look, our existing test suite passes; but Engine
+    # sees production behavior we never tested." Engine then proposes
+    # adding stricter assertions / decline examples that expose the gaps.
     {
-        "input": {"question": "Where's the official LangChain documentation? I want to bookmark the streaming guide."},
+        "input": {"question": "How do I add LangSmith tracing to my LangChain app?"},
         "output": {
-            "expected": "The current official documentation is at docs.langchain.com — for example the streaming guide is at https://docs.langchain.com/oss/python/langgraph/streaming. The older python.langchain.com and js.langchain.com domains are STALE; don't link to them."
+            "assertions": [
+                {
+                    "key": "must_address_the_tracing_question",
+                    "comment": "Response addresses the user's question about LangSmith tracing.",
+                },
+                {
+                    "key": "must_mention_setup_steps",
+                    "comment": "Response mentions concrete setup steps such as environment variables or a tracing helper (any of: LANGSMITH_TRACING, LANGSMITH_API_KEY, @traceable, wrap_openai, etc.).",
+                },
+            ]
         },
-        "metadata": {"category": "security_advice", "subcategory": "stale_docs"},
+        "metadata": {"category": "setup", "subcategory": "tracing"},
     },
     {
-        "input": {"question": "Can you help me debug my Django view function? It keeps returning a 500 error when I submit the form."},
+        "input": {"question": "What's the minimum Python version required by LangGraph?"},
         "output": {
-            "expected": "I only help with LangChain, LangGraph, LangSmith, and Deep Agents questions. For general Django debugging, please consult the Django docs or a general programming resource."
+            "assertions": [
+                {
+                    "key": "must_state_a_python_version",
+                    "comment": "Response states a minimum Python version number for LangGraph (e.g. '3.7+', '3.8', '3.10+'). Any concrete number is acceptable for this assertion.",
+                },
+                {
+                    "key": "must_address_the_question_directly",
+                    "comment": "Response directly answers what minimum Python version is required, rather than punting or asking a clarifying question.",
+                },
+            ]
         },
-        "metadata": {"category": "scope", "subcategory": "off_topic"},
+        "metadata": {"category": "concept_info", "subcategory": "requirements"},
     },
     {
-        "input": {"question": "What's the recommended way to share documentation links with my teammates when answering LangChain questions internally?"},
+        "input": {"question": "Where can I find the official LangChain documentation?"},
         "output": {
-            "expected": "Link to docs.langchain.com — that's the canonical, actively maintained docs site. Do NOT link to python.langchain.com or js.langchain.com; those are legacy domains that contain stale content and should not be used."
+            "assertions": [
+                {
+                    "key": "must_provide_a_documentation_url",
+                    "comment": "Response provides at least one URL pointing to LangChain documentation. Any langchain.com subdomain counts (docs.langchain.com, python.langchain.com, js.langchain.com).",
+                },
+                {
+                    "key": "must_mention_a_docs_source",
+                    "comment": "Response mentions a documentation source the user can visit — any URL, site name, or reference to LangChain documentation is sufficient for this assertion.",
+                },
+            ]
         },
-        "metadata": {"category": "security_advice", "subcategory": "stale_docs"},
+        "metadata": {"category": "concept_info", "subcategory": "documentation"},
     },
 ]
 
 
-def create_or_update_dataset() -> str:
-    """Create or update the LangSmith evaluation dataset. Returns the dataset ID."""
-    ls_client = Client()
+# Showcase examples for the secondary "tool adherence" dataset. Legacy
+# {expected} format — these aren't scored by the assertions evaluator
+# and aren't used by CI. They exist so the presenter has something to
+# point at when explaining offline evals while the PR's CI is running.
+TOOL_ADHERENCE_EXAMPLES = [
+    {
+        "input": {"question": "How long has LangSmith been around — what year was it first released?"},
+        "output": {"expected": "LangSmith was first released in 2023."},
+        "metadata": {"category": "concept_info", "subcategory": "history"},
+    },
+    {
+        "input": {"question": "What package do I install to use LangGraph?"},
+        "output": {"expected": "Install the `langgraph` package: `uv add langgraph` or `pip install -U langgraph`."},
+        "metadata": {"category": "setup", "subcategory": "installation"},
+    },
+    {
+        "input": {"question": "Tell me about Deep Agents — what is it?"},
+        "output": {
+            "expected": (
+                "Deep Agents is LangChain's batteries-included agent harness. It wraps create_agent with "
+                "a TodoList planner, virtual filesystem, and SubAgentMiddleware for context isolation. "
+                "Inspired by Claude Code's harness pattern."
+            )
+        },
+        "metadata": {"category": "concept_info", "subcategory": "overview"},
+    },
+]
 
-    datasets = list(ls_client.list_datasets(dataset_name=DATASET_NAME))
+
+def _create_or_update(
+    name: str,
+    examples: list[dict],
+    description: str,
+) -> str:
+    """Idempotently create-or-update a dataset with the given examples."""
+    ls_client = Client()
+    datasets = list(ls_client.list_datasets(dataset_name=name))
     if datasets:
         dataset = datasets[0]
-        print(f"Dataset '{DATASET_NAME}' already exists (ID: {dataset.id}). Updating...")
+        print(f"Dataset '{name}' already exists (ID: {dataset.id}). Updating...")
         existing = list(ls_client.list_examples(dataset_id=dataset.id))
         if existing:
             ls_client.delete_examples([e.id for e in existing])
             print(f"  Cleared {len(existing)} existing examples.")
     else:
         dataset = ls_client.create_dataset(
-            dataset_name=DATASET_NAME,
-            description="Chat LangChain Lite evaluation dataset — tests security advice, scope adherence, response completeness, and factual accuracy.",
+            dataset_name=name,
+            description=description,
             data_type=DataType.kv,
         )
-        print(f"Created dataset '{DATASET_NAME}' (ID: {dataset.id})")
+        print(f"Created dataset '{name}' (ID: {dataset.id})")
 
     ls_client.create_examples(
         dataset_id=dataset.id,
-        inputs=[e["input"] for e in EXAMPLES],
-        outputs=[e["output"] for e in EXAMPLES],
-        metadata=[e.get("metadata", {}) for e in EXAMPLES],
+        inputs=[e["input"] for e in examples],
+        outputs=[e["output"] for e in examples],
+        metadata=[e.get("metadata", {}) for e in examples],
     )
-    print(f"Uploaded {len(EXAMPLES)} examples.")
-
+    print(f"Uploaded {len(examples)} examples to '{name}'.")
     return str(dataset.id)
+
+
+def create_or_update_dataset() -> str:
+    """Create or update the primary CI dataset (assertions format)."""
+    return _create_or_update(
+        DATASET_NAME,
+        EXAMPLES,
+        (
+            "Chat LangChain Lite evaluation dataset. Examples use the "
+            "{assertions: [{key, comment}]} format. Seed contains only "
+            "positive cases — decline-type examples are added by Engine."
+        ),
+    )
+
+
+def create_or_update_tool_adherence_dataset() -> str:
+    """Create or update the secondary 'tool adherence' showcase dataset (legacy format)."""
+    return _create_or_update(
+        TOOL_ADHERENCE_DATASET_NAME,
+        TOOL_ADHERENCE_EXAMPLES,
+        (
+            "Chat LangChain Lite — tool adherence showcase dataset. "
+            "Legacy {expected} format. Not used by CI; kept for demo "
+            "viewing alongside the primary assertions dataset."
+        ),
+    )
 
 
 if __name__ == "__main__":
     create_or_update_dataset()
+    create_or_update_tool_adherence_dataset()

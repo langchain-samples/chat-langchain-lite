@@ -5,12 +5,15 @@ in this repo. Engine should look here to find where the agent's context
 comes from — but the actual prompt content is edited in the Context Hub
 UI, not in the codebase.
 
-Context Hub repo: chat-langchain-lite-agent
+The repo name is scoped per-presenter via LANGSMITH_PROJECT (see
+evals.dataset.DEMO_PRESENTER for derivation).
 """
 
 from langsmith import Client
 
-CONTEXT_HUB_REPO = "chat-langchain-lite-agent"
+from evals.dataset import DEMO_PRESENTER
+
+CONTEXT_HUB_REPO = f"chat-lc-lite-agent-{DEMO_PRESENTER}"
 
 
 def get_prompt() -> str:

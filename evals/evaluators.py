@@ -1,6 +1,11 @@
-"""Evaluators for the Chat LangChain Lite demo."""
+"""Evaluators for the Chat LangChain Lite demo.
 
-import json
+A single `assertion_evaluator` consumes each example's `assertions` list
+and produces one feedback row per assertion via LLM-as-judge. This matches
+the format Engine emits when proposing generated examples to a dataset,
+so anything Engine adds is scored the same way.
+"""
+
 from anthropic import Anthropic
 
 _anthropic_client = None
@@ -13,63 +18,65 @@ def _get_anthropic_client() -> Anthropic:
     return _anthropic_client
 
 
-def _llm_judge(system_prompt: str, output: str) -> float:
+def _judge_assertion(criterion: str, output: str, tools_called: list[str]) -> float:
+    """LLM-as-judge: does the agent response satisfy the criterion?
+
+    Returns 1.0 if 'yes', 0.0 otherwise.
+    """
     client = _get_anthropic_client()
+    system_prompt = (
+        "You are evaluating whether an AI agent's response satisfies a single, "
+        "specific assertion (success criterion).\n\n"
+        "You receive:\n"
+        "  - The assertion text (the criterion the response must meet)\n"
+        "  - The list of tools the agent called for this run (may be empty)\n"
+        "  - The agent's final response text\n\n"
+        "Answer ONLY 'yes' if the response satisfies the assertion, or 'no' if it does not. "
+        "Be strict: the assertion must be clearly met in the response."
+    )
+    user_msg = (
+        f"Assertion: {criterion}\n\n"
+        f"Tools called: {', '.join(tools_called) if tools_called else '(none)'}\n\n"
+        f"Agent response:\n{output}\n\n"
+        "Does the response satisfy the assertion? Answer ONLY 'yes' or 'no'."
+    )
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=16,
         system=system_prompt,
-        messages=[{"role": "user", "content": (
-            f"Agent response: {output}\n\n"
-            "Answer ONLY 'yes' (score 1) or 'no' (score 0)."
-        )}],
+        messages=[{"role": "user", "content": user_msg}],
     )
     answer = response.content[0].text.strip().lower()
     return 1.0 if answer.startswith("yes") else 0.0
 
 
-def tool_selection_evaluator(run, example) -> dict:
-    """Did the agent call a tool or give a clean off-topic refusal?
+def assertion_evaluator(run, example) -> dict:
+    """Single all-or-nothing score: 1.0 if every assertion passes, else 0.0.
 
-    Score: 1 = tools were called, or question was not LangChain-related (no tool needed)
-           0 = LangChain question answered from memory without calling any tool
-    """
-    question = (example.inputs or {}).get("question", "") if example else ""
-    full_output = json.dumps(run.outputs or {})
-    trajectory = f"Question: {question}\n\nAgent output: {full_output}"
-    system_prompt = (
-        "You are grading a Chat LangChain Lite assistant that has tools for concept lookup, "
-        "setup guides, and security advice on LangChain, LangGraph, LangSmith, and Deep Agents.\n\n"
-        "Look at the tools_called field in the agent output.\n"
-        "Score 'yes' if tools_called is non-empty (agent used tools).\n"
-        "Score 'yes' if tools_called is empty AND the question is NOT about the LangChain ecosystem "
-        "(correct refusal, no tools needed).\n"
-        "Score 'no' if tools_called is empty AND the question IS about LangChain/LangGraph/LangSmith/"
-        "Deep Agents (agent should have called a tool)."
-    )
-    client = _get_anthropic_client()
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=16,
-        system=system_prompt,
-        messages=[{"role": "user", "content": trajectory + "\n\nAnswer ONLY 'yes' (score 1) or 'no' (score 0)."}],
-    )
-    answer = response.content[0].text.strip().lower()
-    return {"key": "tool_selection", "score": 1.0 if answer.startswith("yes") else 0.0}
+    Returns ONE feedback row per example with key `all_assertions_met`. The
+    per-assertion breakdown is stuffed into the `comment` field so the
+    trace's feedback panel still shows which specific assertion failed.
 
-
-def scope_adherence_evaluator(run, example) -> dict:
-    """LLM-as-judge: did the agent stay on LangChain topics and decline off-topic questions?
-
-    Score: 1 = correctly declined non-LangChain questions
-           0 = answered off-topic questions (poetry, cooking, general trivia, etc.)
+    Aggregate per-example so the experiment view has a single column —
+    cleaner before/after comparison when Engine opens a PR.
     """
     output = (run.outputs or {}).get("output") or ""
-    system_prompt = (
-        "You are evaluating whether a Chat LangChain Lite assistant stayed on topic.\n\n"
-        "Score 'yes' if the agent only answered questions about LangChain, LangGraph, LangSmith, "
-        "or Deep Agents, and stayed focused on that ecosystem. "
-        "Score 'no' if the agent answered off-topic questions about creative writing, cooking, "
-        "general trivia, math problems, or other domains outside the LangChain ecosystem."
-    )
-    return {"key": "scope_adherence", "score": _llm_judge(system_prompt, output)}
+    tools_called = (run.outputs or {}).get("tools_called") or []
+    assertions = (example.outputs or {}).get("assertions") or []
+
+    if not assertions:
+        return {"key": "all_assertions_met", "score": 0.0, "comment": "(no assertions defined)"}
+
+    per_assertion = []
+    for a in assertions:
+        key = a.get("key", "assertion")
+        score = _judge_assertion(a.get("comment", ""), output, tools_called)
+        per_assertion.append((key, score))
+
+    all_pass = all(score == 1.0 for _, score in per_assertion)
+    breakdown = " | ".join(f"{k}={'✓' if s == 1.0 else '✗'}" for k, s in per_assertion)
+    return {
+        "key": "all_assertions_met",
+        "score": 1.0 if all_pass else 0.0,
+        "comment": breakdown,
+    }

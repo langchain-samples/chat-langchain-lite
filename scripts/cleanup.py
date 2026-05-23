@@ -27,43 +27,43 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-_demo_user = os.getenv("DEMO_USER", "").strip()
-DATASET_NAME = f"chat-langchain-lite-demo-dataset-{_demo_user}" if _demo_user else "chat-langchain-lite-demo-dataset"
-PROJECT_NAME = os.getenv("LANGSMITH_PROJECT", "chat-langchain-lite-demo")
+from evals.dataset import DATASET_NAME, TOOL_ADHERENCE_DATASET_NAME, DEMO_PRESENTER
+PROJECT_NAME = os.getenv("LANGSMITH_PROJECT", "chat-lc-lite")
 
 
 # ── 1. Reset dataset ───────────────────────────────────────────────────────────
 
 def reset_dataset() -> None:
-    """Reset dataset to the original 3 examples by deleting all and re-uploading.
+    """Reset both demo datasets to their canonical seed examples.
 
-    Engine may add examples and re-tag baseline, so we don't rely on the tag.
-    Instead, delete everything and re-upload the canonical 3 from dataset.py.
+    Engine may add examples to the primary dataset, so we delete everything
+    and re-upload the originals.
     """
     from langsmith import Client
-    from evals.dataset import EXAMPLES
+    from evals.dataset import EXAMPLES, TOOL_ADHERENCE_EXAMPLES
 
-    print(f"\n[1/3] Resetting dataset '{DATASET_NAME}' to original 3 examples...")
+    print(f"\n[1/3] Resetting demo datasets to canonical seeds...")
     ls_client = Client()
 
-    datasets = list(ls_client.list_datasets(dataset_name=DATASET_NAME))
-    if not datasets:
-        print(f"  Dataset '{DATASET_NAME}' not found. Skipping.")
-        return
-
-    dataset = datasets[0]
-    existing = list(ls_client.list_examples(dataset_id=dataset.id))
-    if existing:
-        ls_client.delete_examples([e.id for e in existing])
-        print(f"  Deleted {len(existing)} example(s).")
-
-    ls_client.create_examples(
-        dataset_id=dataset.id,
-        inputs=[e["input"] for e in EXAMPLES],
-        outputs=[e["output"] for e in EXAMPLES],
-        metadata=[e.get("metadata", {}) for e in EXAMPLES],
-    )
-    print(f"  Re-uploaded {len(EXAMPLES)} original examples.")
+    for name, examples in (
+        (DATASET_NAME, EXAMPLES),
+        (TOOL_ADHERENCE_DATASET_NAME, TOOL_ADHERENCE_EXAMPLES),
+    ):
+        datasets = list(ls_client.list_datasets(dataset_name=name))
+        if not datasets:
+            print(f"  Dataset '{name}' not found. Skipping.")
+            continue
+        dataset = datasets[0]
+        existing = list(ls_client.list_examples(dataset_id=dataset.id))
+        if existing:
+            ls_client.delete_examples([e.id for e in existing])
+        ls_client.create_examples(
+            dataset_id=dataset.id,
+            inputs=[e["input"] for e in examples],
+            outputs=[e["output"] for e in examples],
+            metadata=[e.get("metadata", {}) for e in examples],
+        )
+        print(f"  '{name}': cleared {len(existing)}, re-uploaded {len(examples)}.")
 
 
 # ── 2. Delete 'after' experiments ─────────────────────────────────────────────
@@ -76,38 +76,28 @@ def delete_ci_experiments() -> None:
     """
     from langsmith import Client
 
-    print(f"\n[2/3] Removing all experiments from dataset '{DATASET_NAME}'...")
-
+    print(f"\n[2/3] Removing all experiments from demo datasets...")
     ls_client = Client()
-    datasets = list(ls_client.list_datasets(dataset_name=DATASET_NAME))
-    if not datasets:
-        print(f"  Dataset '{DATASET_NAME}' not found — skipping.")
-        return
-
-    dataset_id = datasets[0].id
-    experiments = list(ls_client.list_projects(reference_dataset_id=dataset_id))
-    if not experiments:
-        print("  No experiments found.")
-        return
-
-    deleted = 0
-    for exp in experiments:
-        for attempt in range(3):
-            try:
-                ls_client.delete_project(project_name=exp.name)
-                print(f"  Deleted '{exp.name}'")
-                deleted += 1
-                time.sleep(1.0)
-                break
-            except Exception as e:
-                if "429" in str(e) and attempt < 2:
-                    print(f"  Rate limited, waiting 5s...")
-                    time.sleep(5.0)
-                else:
-                    print(f"  Failed to delete '{exp.name}': {e}")
+    total_deleted = 0
+    for name in (DATASET_NAME, TOOL_ADHERENCE_DATASET_NAME):
+        datasets = list(ls_client.list_datasets(dataset_name=name))
+        if not datasets:
+            continue
+        experiments = list(ls_client.list_projects(reference_dataset_id=datasets[0].id))
+        for exp in experiments:
+            for attempt in range(3):
+                try:
+                    ls_client.delete_project(project_name=exp.name)
+                    total_deleted += 1
+                    time.sleep(1.0)
                     break
-
-    print(f"  Deleted {deleted} experiment(s).")
+                except Exception as e:
+                    if "429" in str(e) and attempt < 2:
+                        time.sleep(5.0)
+                    else:
+                        print(f"  Failed to delete '{exp.name}': {e}")
+                        break
+    print(f"  Deleted {total_deleted} experiment(s) across both datasets.")
 
 
 # ── 3. Delete Engine-added online evaluators ───────────────────────────────────
@@ -169,44 +159,73 @@ def delete_engine_evaluators(api_key: str) -> None:
         print(f"  Deleted {deleted} Engine-added evaluator(s).")
 
 
-# ── Optional: nuke the entire LangSmith project ───────────────────────────────
+# ── Optional: delete the entire LangSmith project ─────────────────────────────
 
-def nuke_project() -> None:
-    """Delete the LangSmith tracing project entirely.
+def delete_project() -> None:
+    """Delete project + datasets + every chat-lc-lite-* Context Hub repo.
 
-    Removes all traces, all online evaluators on this project, and any Engine
-    issue state scoped to the project. The dataset and its examples are NOT
-    affected (datasets live independently of projects). Online evaluators are
-    project-scoped, so they go with the project.
-
-    After this runs, the next demoer should re-run `python -m scripts.setup`
-    to recreate the project, dataset version tag, and the 5 online evaluators.
+    Removes all traces, online evaluators on the project, Engine issue state,
+    both demo datasets, and any Context Hub agent / skill whose handle starts
+    with `chat-lc-lite-` (sweep catches leftovers from prior renames).
     """
     from langsmith import Client
 
-    print(f"\n[*] Deleting LangSmith project '{PROJECT_NAME}'...")
     ls_client = Client()
+
+    # 1. Project
+    print(f"\n[*] Deleting LangSmith project '{PROJECT_NAME}'...")
     try:
         ls_client.delete_project(project_name=PROJECT_NAME)
         print(f"  Deleted project '{PROJECT_NAME}'.")
     except Exception as e:
-        msg = str(e).lower()
-        if "not found" in msg or "404" in msg:
-            print(f"  Project '{PROJECT_NAME}' not found — nothing to delete.")
+        if any(s in str(e).lower() for s in ("not found", "404")):
+            print(f"  Project '{PROJECT_NAME}' not found.")
         else:
             print(f"  Project delete failed: {e}")
-            return
 
-    # Also remove the Context Hub agent repo so the next setup pushes a fresh one
-    try:
-        ls_client.delete_agent("chat-langchain-lite-agent")
-        print("  Deleted Context Hub agent repo 'chat-langchain-lite-agent'.")
-    except Exception as e:
-        msg = str(e).lower()
-        if "not found" in msg or "404" in msg:
-            print("  Context Hub agent repo not found — nothing to delete.")
-        else:
-            print(f"  Context Hub agent delete failed: {e}")
+    # 2. Datasets — delete entirely (not reset). Sweep current demo names
+    # plus any stale chat-lc-lite-* datasets from prior renames AND the
+    # auto-generated `Evaluator: chat-lc-lite:...` pseudo-datasets LangSmith
+    # creates when online evaluators run (they linger after the evaluator
+    # itself is deleted).
+    print(f"\n[*] Deleting demo datasets...")
+    known = {DATASET_NAME, TOOL_ADHERENCE_DATASET_NAME}
+    for d in ls_client.list_datasets():
+        if (
+            d.name in known
+            or d.name.startswith("chat-lc-lite-")
+            or d.name.startswith("Evaluator: chat-lc-lite")
+        ):
+            try:
+                ls_client.delete_dataset(dataset_id=d.id)
+                print(f"  Deleted dataset '{d.name}'.")
+            except Exception as e:
+                print(f"  Dataset delete failed for '{d.name}': {e}")
+
+    # 3. Context Hub — sweep every chat-lc-lite-* agent and skill (catches
+    # the current ones plus any leftovers from prior renames).
+    print(f"\n[*] Deleting Context Hub repos (chat-lc-lite-* sweep)...")
+    api_key = os.environ.get("LANGSMITH_API_KEY", "")
+    workspace_id = os.environ.get("LANGSMITH_WORKSPACE_ID", "")
+    H = {"x-api-key": api_key}
+    if workspace_id:
+        H["X-Tenant-Id"] = workspace_id
+    for repo_type, delete_fn in (("agent", ls_client.delete_agent), ("skill", ls_client.delete_skill)):
+        r = requests.get(
+            f"https://api.smith.langchain.com/v1/platform/hub/repos?repo_type={repo_type}",
+            headers=H,
+        )
+        if r.status_code != 200:
+            continue
+        for repo in r.json().get("repos", []):
+            handle = repo.get("repo_handle", "")
+            if handle.startswith("chat-lc-lite-") or handle in {"release-notes-skill", "support-ticket-triage-skill", "pr-review-summary-skill"}:
+                try:
+                    delete_fn(handle)
+                    print(f"  Deleted {repo_type} '{handle}'.")
+                except Exception as e:
+                    if not any(s in str(e).lower() for s in ("not found", "404")):
+                        print(f"  {repo_type} delete failed for '{handle}': {e}")
 
     # Clear the saved run-rule IDs from state — those IDs no longer exist
     try:
@@ -297,17 +316,19 @@ def main():
         print("Error: LANGSMITH_API_KEY not set.")
         sys.exit(1)
 
-    print(f"Cleaning up demo for user '{_demo_user or 'default'}'...")
+    print(f"Cleaning up demo...")
     print(f"  Dataset:  {DATASET_NAME}")
     print(f"  Project:  {PROJECT_NAME}")
     if args.full:
         print(f"  Mode:     FULL (project will be deleted)")
 
-    reset_dataset()
-    delete_ci_experiments()
     if args.full:
-        nuke_project()
+        # --full nukes datasets + Context Hub directly; no point resetting
+        # them just to delete them. Project deletion also wipes experiments.
+        delete_project()
     else:
+        reset_dataset()
+        delete_ci_experiments()
         delete_engine_evaluators(api_key)
     reset_main_to_baseline()
 

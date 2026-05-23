@@ -272,7 +272,7 @@ wheels = [
 ]
 
 [[package]]
-name = "chat-langchain-lite-agent"
+name = "chat-lc-lite-agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

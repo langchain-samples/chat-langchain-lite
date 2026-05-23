@@ -1,4 +1,4 @@
-# chat-langchain-lite
+# chat-lc-lite
 
 A LangChain ecosystem chatbot ("Chat LangChain Lite") with intentional bugs, built to demonstrate LangSmith Engine's ability to identify issues in agent traces and propose fixes via PR. The agent answers questions about LangChain, LangGraph, LangSmith, and Deep Agents using three tools: `lookup_concept`, `get_setup_guide`, and `get_security_advice`.
 
@@ -16,8 +16,8 @@ Bugs are spread across three files so Engine has to reason about code, not just 
 
 | Bug | File / Location | Effect | Caught by |
 |-----|------|--------|-----------|
-| "Never use tools, never decline" instruction | LangSmith Context Hub (`chat-langchain-lite-agent` / AGENTS.md) — fix in the Context Hub UI, not the repo | Answers any topic; answers from memory instead of calling tools | `tool_usage`, `scope_adherence` |
-| Casual / emoji voice | LangSmith Context Hub (`chat-langchain-lite-agent` / AGENTS.md) — fix in the Context Hub UI, not the repo | Every response starts with "Hey there! 👋", uses emojis throughout, ends with "Happy building! 🚀" | `professional_tone` |
+| "Never use tools, never decline" instruction | LangSmith Context Hub (`chat-lc-lite-agent-robert` / AGENTS.md) — fix in the Context Hub UI, not the repo | Answers any topic; answers from memory instead of calling tools | `tool_usage`, `scope_adherence` |
+| Casual / emoji voice | LangSmith Context Hub (`chat-lc-lite-agent-robert` / AGENTS.md) — fix in the Context Hub UI, not the repo | Every response starts with "Hey there! 👋", uses emojis throughout, ends with "Happy building! 🚀" | `professional_tone` |
 | Wrong docs URL in SAFE_PATTERNS | `agent/tools.py` | Agent recommends stale `python.langchain.com` / `js.langchain.com` links instead of `docs.langchain.com` | `security_advice` |
 | Wrong LangGraph min Python version | `agent/tools.py` | Returns "3.7+" instead of the correct "3.10+" | `factual_accuracy` |
 | `max_tokens=300` | `agent/agent.py` | Truncates responses on complex technical questions | `response_completeness` |
@@ -48,17 +48,12 @@ Edit `.env`:
 ```
 ANTHROPIC_API_KEY=your-key
 LANGSMITH_API_KEY=your-demo-workspace-api-key
-LANGSMITH_PROJECT=chat-langchain-lite-demo-yourname
+LANGSMITH_PROJECT=chat-lc-lite
 LANGSMITH_WORKSPACE_ID=your-demo-workspace-id
-LANGCHAIN_TRACING_V2=true
-DEMO_USER=your-name
+LANGSMITH_TRACING=true
 ```
 
-> Use a unique `LANGSMITH_PROJECT` name per person (e.g. `chat-langchain-lite-demo-morgan`). Multiple demo-ers sharing the same project name will mix traces and online evaluators. The project is created automatically on first use.
-
-`DEMO_USER` additionally scopes your dataset and experiment names:
-- Dataset: `chat-langchain-lite-demo-dataset-morgan`
-- Experiments: `chat-langchain-lite-demo-morgan-<timestamp>`
+> If multiple presenters share a LangSmith workspace, use a unique `LANGSMITH_PROJECT` per person (e.g. `chat-lc-lite-morgan`) to avoid mixing traces and online evaluators. The project is created automatically on first use.
 
 **4. Run one-shot setup**
 ```bash
@@ -67,7 +62,7 @@ python -m scripts.setup
 
 This does three things in one command:
 1. **Creates the LangSmith project** by sending one trace (required before online evaluators can be registered)
-2. **Creates the dataset** `chat-langchain-lite-demo-dataset-<your-name>` with 3 curated test cases, then tags that version as `baseline` in LangSmith
+2. **Creates the dataset** `chat-lc-lite-scope-<your-name>` with 3 curated test cases, then tags that version as `baseline` in LangSmith
 3. **Creates 5 online evaluators** in the LangSmith Evaluators UI at 100% sampling rate — every future trace is automatically scored for `security_advice`, `scope_adherence`, `tool_usage`, `response_completeness`, and `factual_accuracy`. Their run rule IDs are saved to `.demo_state.json` so cleanup can tell them apart from evaluators Engine adds.
 
 Only needs to be run once. Between demos, run `python -m scripts.cleanup` instead.
@@ -81,7 +76,7 @@ Runs 13 single-turn queries and 3 multi-turn threaded conversations through the 
 
 **6. Add GitHub secrets** (for CI/CD)
 
-In your fork: Settings → Secrets → Actions → add `ANTHROPIC_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `LANGSMITH_WORKSPACE_ID`, and `DEMO_USER`.
+In your fork: Settings → Secrets → Actions → add `ANTHROPIC_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, and `LANGSMITH_WORKSPACE_ID`.
 
 > **Important:** When pasting secrets, make sure there are no trailing newlines or spaces.
 
@@ -161,9 +156,8 @@ Add these secrets to your repo (Settings → Secrets → Actions):
 - `LANGSMITH_API_KEY`
 - `LANGSMITH_PROJECT`
 - `LANGSMITH_WORKSPACE_ID`
-- `DEMO_USER`
 
-`DEMO_USER` and `LANGSMITH_PROJECT` must match what you used locally — that's how CI finds the right dataset.
+`LANGSMITH_PROJECT` should match what you used locally — that's the project the agent traces against.
 
 ```
 PR opened → GitHub Actions → run_evals --skip-dataset --threshold 0.7

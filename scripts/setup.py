@@ -1,12 +1,14 @@
-"""One-shot setup for the chat-langchain-lite demo.
+"""One-shot setup for the chat-lc-lite demo.
 
 Run this once after cloning and configuring .env. It:
   1. Creates (or updates) the LangSmith evaluation dataset
   2. Creates 5 online evaluators in the LangSmith Evaluators UI at 100%
      sampling rate so every future trace is automatically scored
-  3. Seeds the dataset with 2 baseline experiments (buggy agent → low scores)
-     so the demo's experiment list has pre-existing 'before' data to reference
-     while CI is running the new before/after experiments.
+  3. Seeds the dataset with one baseline experiment per model (Haiku +
+     Sonnet) so the demo's experiment list has pre-populated 'before' data
+     to compare while CI is running the new before/after experiments.
+     Both score ~100% on the permissive seed assertions; the demo beat is
+     the cost/latency comparison between the two models.
 
 Evaluators (used for online trace scoring):
   security_advice       — agent avoids recommending insecure practices
@@ -17,9 +19,8 @@ Evaluators (used for online trace scoring):
   factual_accuracy      — agent gave correct LangChain/LangGraph/LangSmith facts
 
 Usage:
-    python -m scripts.setup                           # full setup (recommended)
-    python -m scripts.setup --skip-baseline-experiments   # faster, no seed experiments
-    python -m scripts.setup --baseline-runs 3         # seed 3 baseline experiments
+    python -m scripts.setup                                # full setup (recommended)
+    python -m scripts.setup --skip-baseline-experiments    # faster, no seed experiments
 """
 
 import json
@@ -31,9 +32,8 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-_demo_user = os.getenv("DEMO_USER", "").strip()
-DATASET_NAME = f"chat-langchain-lite-demo-dataset-{_demo_user}" if _demo_user else "chat-langchain-lite-demo-dataset"
-PROJECT_NAME = os.getenv("LANGSMITH_PROJECT", "chat-langchain-lite-demo")
+from evals.dataset import DATASET_NAME, DEMO_PRESENTER
+PROJECT_NAME = os.getenv("LANGSMITH_PROJECT", "chat-lc-lite")
 WORKSPACE_ID = os.getenv("LANGSMITH_WORKSPACE_ID", "").strip()
 
 
@@ -164,6 +164,8 @@ def setup_dataset() -> str:
 
     print(f"\n[2/4] Setting up dataset '{DATASET_NAME}'...")
     create_or_update_dataset()
+    # The tool-adherence dataset implementation is preserved in evals/dataset.py
+    # (create_or_update_tool_adherence_dataset) but not seeded for the demo.
 
     ls_client = Client()
     ls_client.update_dataset_tag(
@@ -187,7 +189,7 @@ def get_project_id(ls_client, project_name: str) -> str:
 
 
 def delete_existing_evaluators(api_key: str) -> None:
-    """Remove any existing chat-langchain-lite-demo evaluators to avoid duplicates.
+    """Remove any existing chat-lc-lite-demo evaluators to avoid duplicates.
 
     Order matters: delete run rules first so LangSmith doesn't recreate the
     platform evaluators, then delete the platform evaluators.
@@ -202,7 +204,7 @@ def delete_existing_evaluators(api_key: str) -> None:
     if resp.status_code == 200:
         for rule in resp.json():
             name = rule.get("display_name", "")
-            if name in our_keys or name.startswith("chat-langchain-lite-demo-"):
+            if name in our_keys or name.startswith("chat-lc-lite-demo-"):
                 requests.delete(
                     f"https://api.smith.langchain.com/api/v1/runs/rules/{rule['id']}",
                     headers=_ls_headers(api_key),
@@ -218,7 +220,7 @@ def delete_existing_evaluators(api_key: str) -> None:
             break
         ids_to_delete = [
             ev["id"] for ev in resp.json().get("evaluators", [])
-            if ev.get("name", "") in our_keys or ev.get("name", "").startswith("chat-langchain-lite-demo-")
+            if ev.get("name", "") in our_keys or ev.get("name", "").startswith("chat-lc-lite-demo-")
         ]
         for ev_id in ids_to_delete:
             requests.delete(
@@ -311,31 +313,30 @@ def setup_online_evaluators(api_key: str) -> list:
 
 # ── Baseline experiments ───────────────────────────────────────────────────────
 
-def seed_baseline_experiments(n_runs: int = 2) -> None:
-    """Run the buggy agent against the dataset N times to populate baseline experiments.
+# One baseline experiment per model. Both score ~100% on the permissive
+# seed dataset; the demo beat is the cost/latency comparison between
+# Haiku (cheap, fast) and Sonnet (more expensive, slower) in the
+# Experiments view while the PR's CI is running.
+_BASELINE_MODELS = [
+    ("claude-haiku-4-5-20251001", "haiku"),
+    ("claude-sonnet-4-6",         "sonnet"),
+]
 
-    Gives the dataset some 'before' experiment history so during the demo,
-    while CI is running the new before/after experiments, the presenter has
-    pre-existing low-scoring experiments to reference when explaining
-    datasets and evaluation.
 
-    Scores will be poor (Bug 1 + Bug 2 + Bug 3 are active), which sets up
-    the after-PR improvement narrative.
-    """
+def seed_baseline_experiments() -> None:
+    """Run one baseline experiment per model in _BASELINE_MODELS."""
     from scripts.run_evals import run_evaluation
 
-    print(f"\n[4/4] Seeding {n_runs} baseline experiment(s) against '{DATASET_NAME}'...")
-    print("  (Buggy agent runs against the dataset — scores will be low, that's expected.)")
+    print(f"\n[4/4] Seeding {len(_BASELINE_MODELS)} baseline experiment(s) against '{DATASET_NAME}'...")
 
-    for i in range(1, n_runs + 1):
-        prefix = f"baseline-{i}-chat-langchain-lite-demo-{_demo_user or 'demo'}"
-        print(f"\n  → Baseline run {i}/{n_runs}: experiment '{prefix}-...'")
-        try:
-            scores = run_evaluation(experiment_prefix=prefix)
-            score_summary = ", ".join(f"{k}={v:.2f}" for k, v in sorted(scores.items()))
-            print(f"  ✓ Run {i} complete: {score_summary}")
-        except Exception as e:
-            print(f"  ⚠️  Baseline run {i} failed: {e}")
+    for model_id, label in _BASELINE_MODELS:
+        os.environ["CHAT_LANGCHAIN_LITE_MODEL"] = model_id
+        prefix = f"baseline-{label}-chat-lc-lite-{DEMO_PRESENTER}"
+        print(f"\n  → {model_id}: experiment '{prefix}-...'")
+        scores = run_evaluation(experiment_prefix=prefix)
+        print(f"  ✓ {label} complete: overall={scores.get('__overall__', 0.0):.2f}")
+
+    os.environ.pop("CHAT_LANGCHAIN_LITE_MODEL", None)
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -349,12 +350,6 @@ def main():
         help="Skip seeding baseline experiments (faster setup, but the dataset's "
              "experiment list will be empty for the demo).",
     )
-    parser.add_argument(
-        "--baseline-runs",
-        type=int,
-        default=2,
-        help="Number of baseline experiments to seed (default: 2).",
-    )
     args = parser.parse_args()
 
     api_key = os.getenv("LANGSMITH_API_KEY")
@@ -362,8 +357,9 @@ def main():
         print("Error: LANGSMITH_API_KEY not set.")
         sys.exit(1)
 
-    from utils.context_hub import push_agents_md
+    from utils.context_hub import push_agents_md, push_demo_skills
     push_agents_md()
+    push_demo_skills()
     ensure_project_exists()
     setup_dataset()
     our_rule_ids = setup_online_evaluators(api_key)
@@ -375,7 +371,7 @@ def main():
         }, f, indent=2)
 
     if not args.skip_baseline_experiments:
-        seed_baseline_experiments(n_runs=args.baseline_runs)
+        seed_baseline_experiments()
 
     print(f"\nSetup complete.")
     print(f"  Dataset:      {DATASET_NAME}")

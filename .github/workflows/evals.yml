@@ -7,12 +7,22 @@ on:
 
 jobs:
   evals:
-    # Demo-friendly gating: CI only fires when the PR has the 'run-evals'
-    # label. For the live demo, you control timing by adding the label
-    # right before the moment you want to show before/after experiments.
-    # Remove this 'if:' to revert to running on every PR.
+    # CI is MANUAL-LABEL gated. Engine opens both quick code-fix PRs
+    # (no eval gating wanted) and regression-prevention PRs (eval gating
+    # wanted). The presenter clicks the `run-evals` label on the latter to
+    # fire CI. Manual-labeled events trigger this workflow (unlike
+    # GITHUB_TOKEN-driven labels, which don't propagate).
     if: contains(github.event.pull_request.labels.*.name, 'run-evals')
     runs-on: ubuntu-latest
+    env:
+      # Secrets are mapped at the job level so every step sees them; GitHub
+      # auto-masks any value sourced from `secrets.*` in logs.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
+      LANGSMITH_WORKSPACE_ID: ${{ secrets.LANGSMITH_WORKSPACE_ID }}
+      DEMO_PRESENTER: ${{ vars.DEMO_PRESENTER }}
+      LANGSMITH_TRACING: "true"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,16 +40,8 @@ jobs:
         run: uv sync
 
       - name: Run 'before' evals (base branch)
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_TRACING: "true"
-          LANGCHAIN_TRACING_V2: "true"
-          LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
-          LANGSMITH_WORKSPACE_ID: ${{ secrets.LANGSMITH_WORKSPACE_ID }}
-          DEMO_USER: ${{ secrets.DEMO_USER }}
         run: |
-          uv run python -m scripts.run_evals --skip-dataset --experiment-prefix "before-chat-langchain-lite-demo-$DEMO_USER"
+          uv run python -m scripts.run_evals --skip-dataset --experiment-prefix "before-${LANGSMITH_PROJECT}"
 
       - uses: actions/checkout@v4
         with:
@@ -49,13 +51,5 @@ jobs:
         run: uv sync
 
       - name: Run 'after' evals (PR branch)
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_TRACING: "true"
-          LANGCHAIN_TRACING_V2: "true"
-          LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
-          LANGSMITH_WORKSPACE_ID: ${{ secrets.LANGSMITH_WORKSPACE_ID }}
-          DEMO_USER: ${{ secrets.DEMO_USER }}
         run: |
-          uv run python -m scripts.run_evals --skip-dataset --threshold 0.7 --experiment-prefix "after-chat-langchain-lite-demo-$DEMO_USER"
+          uv run python -m scripts.run_evals --skip-dataset --threshold 0.7 --experiment-prefix "after-${LANGSMITH_PROJECT}"

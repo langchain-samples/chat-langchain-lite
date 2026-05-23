@@ -1,6 +1,8 @@
+import os
+
 from langchain.agents import create_agent
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessageChunk, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from deepagents.middleware.filesystem import FilesystemMiddleware
@@ -8,67 +10,64 @@ from deepagents.backends.context_hub import ContextHubBackend
 
 from agent.tools import TOOLS
 from context import CONTEXT_HUB_REPO, get_prompt
+from utils.streaming import iter_text
 
 # AGENTS.md is the agent's system prompt — pulled fresh from LangSmith
 # Context Hub at module import. The content lives in Context Hub, not in
-# this repo. To change the prompt, edit it in the Context Hub UI.
+# this repo. Edit the prompt in the Context Hub UI.
 SYSTEM_PROMPT = get_prompt()
+
+# Override with CHAT_LANGCHAIN_LITE_MODEL env var — used by setup.py to seed
+# baseline experiments against a more expensive model (Sonnet) for the
+# demo's cost/latency comparison.
+_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+
+
+def _model_id() -> str:
+    return os.getenv("CHAT_LANGCHAIN_LITE_MODEL") or _DEFAULT_MODEL
 
 
 def build_agent():
     return create_agent(
-        model=ChatAnthropic(model="claude-haiku-4-5-20251001", max_tokens=300),
+        model=ChatAnthropic(model=_model_id(), max_tokens=300),
         tools=TOOLS,
         system_prompt=SYSTEM_PROMPT,
-        # FilesystemMiddleware exposes ls/read_file/etc. tools backed by the
-        # same Context Hub repo, in case the agent needs to consult other
-        # files (skills, policies, references) at request time.
-        middleware=[
-            FilesystemMiddleware(backend=ContextHubBackend(CONTEXT_HUB_REPO)),
-        ],
+        # FilesystemMiddleware exposes ls/read_file/etc. backed by Context Hub.
+        middleware=[FilesystemMiddleware(backend=ContextHubBackend(CONTEXT_HUB_REPO))],
     )
 
 
-def _make_config(extra_metadata: dict = None) -> RunnableConfig:
-    metadata = {"demo": "true", "demo_type": "chat-langchain-lite"}
-    if extra_metadata:
-        metadata.update(extra_metadata)
-    return RunnableConfig(
-        run_name="chat-langchain-lite-demo",
-        metadata=metadata,
-        tags=["engine-demo", "chat-langchain-lite-agent"],
-    )
-
-
-def invoke_agent(question: str, extra_metadata: dict = None, thread_id: str = None) -> dict:
-    """Invoke the agent and return the full conversation as messages plus a flat tools_called list.
-
-    The messages list (input, tool calls, tool results, final response) is stored
-    in run.outputs so the trace shows the complete trajectory.
-    tools_called is a flat list of tool names so evaluators can check it directly.
-    """
-    agent = build_agent()
-    merged_metadata = {**(extra_metadata or {})}
+def _config(thread_id: str | None = None) -> RunnableConfig:
+    metadata = {"demo": "true", "demo_type": "chat-lc-lite", "model": _model_id()}
     if thread_id:
-        merged_metadata["thread_id"] = thread_id
-    result = agent.invoke(
-        {"messages": [{"role": "user", "content": question}]},
-        _make_config(merged_metadata or None),
+        metadata["thread_id"] = thread_id
+    return RunnableConfig(
+        run_name="chat-lc-lite-demo",
+        metadata=metadata,
+        tags=["engine-demo", CONTEXT_HUB_REPO],
     )
-    output = ""
-    for msg in reversed(result["messages"]):
-        if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content:
-            output = msg.content
-            break
-    tools_called = [msg.name for msg in result["messages"] if isinstance(msg, ToolMessage)]
-    return {
-        "output": output,
-        "messages": result["messages"],
-        "tools_called": tools_called,
-    }
 
 
-def stream_agent(question: str, extra_metadata: dict = None, thread_id: str = None):
-    """Stream the agent response token by token. Yields str chunks."""
-    result = invoke_agent(question, extra_metadata, thread_id=thread_id)
-    yield from result["output"]
+def _user_msg(question: str) -> dict:
+    return {"messages": [{"role": "user", "content": question}]}
+
+
+def invoke_agent(question: str, thread_id: str | None = None) -> dict:
+    """Run the agent once. Returns {output, tools_called, messages}."""
+    result = build_agent().invoke(_user_msg(question), _config(thread_id))
+    output = next(
+        (m.content for m in reversed(result["messages"])
+         if isinstance(getattr(m, "content", None), str) and m.content),
+        "",
+    )
+    tools_called = [m.name for m in result["messages"] if isinstance(m, ToolMessage)]
+    return {"output": output, "tools_called": tools_called, "messages": result["messages"]}
+
+
+def stream_agent(question: str, thread_id: str | None = None):
+    """Stream the agent's response text as it's generated."""
+    for chunk, _meta in build_agent().stream(
+        _user_msg(question), _config(thread_id), stream_mode="messages"
+    ):
+        if isinstance(chunk, AIMessageChunk):
+            yield from iter_text(chunk)

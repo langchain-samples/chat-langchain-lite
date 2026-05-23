@@ -18,9 +18,8 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-_demo_user = os.getenv("DEMO_USER", "").strip()
-DATASET_NAME = f"chat-langchain-lite-demo-dataset-{_demo_user}" if _demo_user else "chat-langchain-lite-demo-dataset"
-PROJECT_NAME = os.getenv("LANGSMITH_PROJECT", "chat-langchain-lite-demo")
+from evals.dataset import DATASET_NAME, DEMO_PRESENTER
+PROJECT_NAME = os.getenv("LANGSMITH_PROJECT", "chat-lc-lite")
 
 
 def run_agent_on_example(inputs: dict) -> dict:
@@ -44,57 +43,46 @@ def run_agent_on_example(inputs: dict) -> dict:
 
 def run_evaluation(experiment_prefix: str) -> dict:
     from langsmith import evaluate
-    from evals.evaluators import (
-        tool_selection_evaluator,
-        scope_adherence_evaluator,
-    )
+    from evals.evaluators import assertion_evaluator
 
     print(f"\nRunning evaluation on dataset '{DATASET_NAME}'...")
 
-    demo_user = os.getenv("DEMO_USER", "demo")
     results = evaluate(
         run_agent_on_example,
         data=DATASET_NAME,
-        evaluators=[
-            tool_selection_evaluator,
-            scope_adherence_evaluator,
-        ],
+        evaluators=[assertion_evaluator],
         experiment_prefix=experiment_prefix,
-        metadata={"demo": "true", "demo_type": "chat-langchain-lite", "demo_user": demo_user},
+        metadata={"demo": "true", "demo_type": "chat-lc-lite"},
     )
 
-    score_buckets = {
-        "tool_selection": [],
-        "scope_adherence": [],
-    }
-
+    # One feedback per example: assertion_evaluator returns a single
+    # {key: "all_assertions_met"} row scoring all-or-nothing. Overall is
+    # the mean across examples.
+    per_example: list[float] = []
     for result in results:
-        for eval_result in result.get("evaluation_results", {}).get("results", []):
-            if eval_result.key in score_buckets and eval_result.score is not None:
-                score_buckets[eval_result.key].append(eval_result.score)
+        for ev in result.get("evaluation_results", {}).get("results", []):
+            if ev.score is None:
+                continue
+            per_example.append(ev.score)
 
-    scores = {}
+    overall = sum(per_example) / len(per_example) if per_example else 0.0
     print(f"\nResults:")
-    for key, values in score_buckets.items():
-        avg = sum(values) / len(values) if values else 0.0
-        scores[key] = avg
-        print(f"  {key:<25} {avg:.2f} ({len(values)} examples)")
-
-    return scores
+    print(f"  all_assertions_met  {overall:.2f}  ({sum(int(s) for s in per_example)}/{len(per_example)} examples pass)")
+    return {"all_assertions_met": overall, "__overall__": overall}
 
 
 def check_threshold(scores: dict, threshold: float) -> bool:
-    """Returns True if tool_selection meets the threshold."""
-    avg = scores.get("tool_selection", 0.0)
-    status = "✅ PASS" if avg >= threshold else "❌ FAIL"
-    print(f"\nThreshold check (>= {threshold}):")
-    print(f"  tool_selection: {avg:.2f} {status}")
-    return avg >= threshold
+    """Returns True if the overall assertion pass rate meets the threshold."""
+    overall = scores.get("__overall__", 0.0)
+    status = "✅ PASS" if overall >= threshold else "❌ FAIL"
+    print(f"\nThreshold check (overall pass rate >= {threshold}):")
+    print(f"  overall: {overall:.2f} {status}")
+    return overall >= threshold
 
 
 ONLINE_EVALUATORS = [
     {
-        "display_name": "chat-langchain-lite-demo-security-advice-online",
+        "display_name": "chat-lc-lite-demo-security-advice-online",
         "feedback_key": "security_advice",
         "system_prompt": (
             "You are evaluating whether a Chat LangChain Lite assistant gave safe, accurate "
@@ -105,7 +93,7 @@ ONLINE_EVALUATORS = [
         ),
     },
     {
-        "display_name": "chat-langchain-lite-demo-scope-adherence-online",
+        "display_name": "chat-lc-lite-demo-scope-adherence-online",
         "feedback_key": "scope_adherence",
         "system_prompt": (
             "You are evaluating whether a Chat LangChain Lite assistant stayed on topic.\n\n"
@@ -192,8 +180,7 @@ def main():
     parser.add_argument("--n-generated", type=int, default=8)
     parser.add_argument("--setup-online-eval", action="store_true")
     parser.add_argument("--threshold", type=float, default=None, help="Fail (exit 1) if avg score below this value")
-    demo_user = os.getenv("DEMO_USER", "demo")
-    parser.add_argument("--experiment-prefix", type=str, default=f"after-chat-langchain-lite-demo-{demo_user}")
+    parser.add_argument("--experiment-prefix", type=str, default=f"after-chat-lc-lite-{DEMO_PRESENTER}")
     args = parser.parse_args()
 
     if not args.skip_dataset:
