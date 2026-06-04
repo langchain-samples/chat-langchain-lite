@@ -183,24 +183,32 @@ def delete_project() -> None:
         else:
             print(f"  Project delete failed: {e}")
 
-    # 2. Datasets — delete entirely (not reset). Sweep current demo names
-    # plus any stale chat-lc-lite-* datasets from prior renames AND the
-    # auto-generated `Evaluator: chat-lc-lite:...` pseudo-datasets LangSmith
-    # creates when online evaluators run (they linger after the evaluator
-    # itself is deleted).
+    # 2. Datasets — delete entirely (not reset). Scope every match to THIS
+    # presenter so a shared workspace's other demoers keep their datasets:
+    #   - the two current demo datasets (exact names), plus
+    #   - any stale chat-lc-lite-*-<presenter> datasets from prior renames
+    #     (the `-<presenter>` suffix is what setup.py appends), plus
+    #   - the auto-generated `Evaluator: <PROJECT_NAME>:...` pseudo-datasets
+    #     LangSmith creates when this project's online evaluators run (they
+    #     linger after the evaluator itself is deleted).
+    # The bare `chat-lc-lite-` prefix is deliberately NOT used: it ignores the
+    # presenter suffix and would delete other demoers' datasets.
     print(f"\n[*] Deleting demo datasets...")
     known = {DATASET_NAME, TOOL_ADHERENCE_DATASET_NAME}
+    presenter_suffix = f"-{DEMO_PRESENTER}"
     for d in ls_client.list_datasets():
-        if (
+        mine = (
             d.name in known
-            or d.name.startswith("chat-lc-lite-")
-            or d.name.startswith("Evaluator: chat-lc-lite")
-        ):
-            try:
-                ls_client.delete_dataset(dataset_id=d.id)
-                print(f"  Deleted dataset '{d.name}'.")
-            except Exception as e:
-                print(f"  Dataset delete failed for '{d.name}': {e}")
+            or (d.name.startswith("chat-lc-lite-") and d.name.endswith(presenter_suffix))
+            or d.name.startswith(f"Evaluator: {PROJECT_NAME}")
+        )
+        if not mine:
+            continue
+        try:
+            ls_client.delete_dataset(dataset_id=d.id)
+            print(f"  Deleted dataset '{d.name}'.")
+        except Exception as e:
+            print(f"  Dataset delete failed for '{d.name}': {e}")
 
     # 3. Context Hub — sweep every chat-lc-lite-* agent and skill (catches
     # the current ones plus any leftovers from prior renames).
