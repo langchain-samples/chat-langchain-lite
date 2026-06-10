@@ -4,7 +4,9 @@ Resets the demo to a clean state so it can be run again without re-running setup
   1. Resets dataset to the original 3 examples (deletes Engine-added examples)
   2. Deletes all experiments — CI/CD generates fresh before/after on every PR
   3. Removes Engine-added online evaluators (keeps the 5 registered by setup.py)
-  4. Force-resets main back to the 'baseline' tag (removes Engine's merged PR)
+  4. Re-seeds Context Hub (AGENTS.md + demo skills) to the buggy baseline,
+     restoring the prompt if it was fixed in the Context Hub UI during the demo
+  5. Force-resets main back to the 'baseline' tag (removes Engine's merged PR)
 
 Optional: --full also deletes the LangSmith project entirely (clears all
 traces and Engine's per-project issue state). After a full reset, re-run
@@ -299,6 +301,29 @@ def reset_main_to_baseline() -> None:
         print(f"  Warning: reset failed ({result.stderr.strip()}).")
 
 
+# ── Re-seed Context Hub ───────────────────────────────────────────────────────
+
+def reset_context_hub() -> None:
+    """Re-seed Context Hub (AGENTS.md + demo skills) back to the buggy baseline.
+
+    Standard cleanup resets code, dataset, and experiments — but the agent's
+    system prompt lives in Context Hub and is edited via the UI during the demo.
+    If a presenter applied the prompt fix live, this restores the buggy seed so
+    the next demo starts clean. Re-pushing overwrites any edited AGENTS.md; the
+    seed content is owned by utils/context_hub.py (the same source setup.py uses).
+
+    Not called by --full, which deletes the Hub repos for a clean-slate re-setup.
+    """
+    from utils.context_hub import push_agents_md, push_demo_skills
+
+    print(f"\n[*] Resetting Context Hub to seed (AGENTS.md + demo skills)...")
+    try:
+        push_agents_md()
+        push_demo_skills()
+    except Exception as e:
+        print(f"  Context Hub reset failed (non-fatal): {e}")
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -332,6 +357,7 @@ def main():
         reset_dataset()
         delete_ci_experiments()
         delete_engine_evaluators(api_key)
+        reset_context_hub()
     reset_main_to_baseline()
 
     if args.full:
