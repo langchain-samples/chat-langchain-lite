@@ -13,8 +13,10 @@ from context import CONTEXT_HUB_REPO, get_prompt
 from utils.streaming import iter_text
 
 # AGENTS.md is the agent's system prompt — pulled fresh from LangSmith
-# Context Hub at module import. The content lives in Context Hub, not in
-# this repo. Edit the prompt in the Context Hub UI.
+# Context Hub at module import.
+# Seed source: utils/context_hub.py (`_SEED_AGENTS_MD`), pushed to Context Hub by
+# `scripts/setup.py` (`push_agents_md()`). A prompt fix can be applied BOTH as a
+# PR to that seed AND to the live Context Hub.
 SYSTEM_PROMPT = get_prompt()
 
 # Override with CHAT_LANGCHAIN_LITE_MODEL env var — used by setup.py to seed
@@ -28,10 +30,7 @@ def _model_id() -> str:
 
 
 # The Context Hub-backed filesystem holds the agent's OWN context (AGENTS.md,
-# playbooks) — it is a read-only reference, NOT a user-delivery channel. Strip the
-# write/execute tools so the agent puts answers in its reply instead of issuing
-# write_file calls, which return nothing to the user, trigger "tool confusion"
-# apologies, and pollute the hub with arbitrary user-requested documents.
+# playbooks) — it is a read-only reference, NOT a user-delivery channel.
 _READONLY_FS_TOOLS = {"ls", "read_file", "glob", "grep"}
 
 
