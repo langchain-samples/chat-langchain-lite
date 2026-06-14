@@ -27,13 +27,26 @@ def _model_id() -> str:
     return os.getenv("CHAT_LANGCHAIN_LITE_MODEL") or _DEFAULT_MODEL
 
 
+# The Context Hub-backed filesystem holds the agent's OWN context (AGENTS.md,
+# playbooks) — it is a read-only reference, NOT a user-delivery channel. Strip the
+# write/execute tools so the agent puts answers in its reply instead of issuing
+# write_file calls, which return nothing to the user, trigger "tool confusion"
+# apologies, and pollute the hub with arbitrary user-requested documents.
+_READONLY_FS_TOOLS = {"ls", "read_file", "glob", "grep"}
+
+
+def _readonly_context_hub_fs() -> FilesystemMiddleware:
+    fs = FilesystemMiddleware(backend=ContextHubBackend(CONTEXT_HUB_REPO))
+    fs.tools = [t for t in fs.tools if t.name in _READONLY_FS_TOOLS]
+    return fs
+
+
 def build_agent():
     return create_agent(
         model=ChatAnthropic(model=_model_id(), max_tokens=300),
         tools=TOOLS,
         system_prompt=SYSTEM_PROMPT,
-        # FilesystemMiddleware exposes ls/read_file/etc. backed by Context Hub.
-        middleware=[FilesystemMiddleware(backend=ContextHubBackend(CONTEXT_HUB_REPO))],
+        middleware=[_readonly_context_hub_fs()],
     )
 
 
