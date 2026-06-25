@@ -1,0 +1,32 @@
+langgraph.json
+  h_7cae82992be157 4,6
+  s_2ec2175992893b::t_33fe70e14645da 1-3,5,7
+requirements.txt
+  s_2ec2175992893b::t_6bfbd0cc37ae5b 1,5
+  h_7cae82992be157 12
+.gitignore
+  h_7cae82992be157 12-13
+pyproject.toml
+  h_7cae82992be157 18,20-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "7c58263b84b3029646b050488ac5c1323ad12348",
+  "prompts": {},
+  "humans": {
+    "h_7cae82992be157": {
+      "author": "Avi Kumar <avirath.kmr@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_2ec2175992893b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e99cdfb-1bf1-4723-bcb4-657a506f83a9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Avi Kumar <avirath.kmr@gmail.com>"
+    }
+  }
+}
