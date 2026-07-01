@@ -36,8 +36,12 @@ Or with pip:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e . "langgraph-cli[inmem]"
 ```
+
+> `uv sync` installs `langgraph-cli` (the `dev` dependency group) for you; the
+> pip path installs it explicitly. The CLI runs the graph server that serves both
+> the API and the chat UI (`langgraph dev`).
 
 **3. Configure environment**
 ```bash
@@ -99,13 +103,17 @@ python -m scripts.setup
 # Generate more traces including threads
 python -m scripts.generate_traces
 
-# Start the chat UI
-streamlit run app.py
+# Start the chat UI (graph API + FastHTML frontend, served from one origin)
+langgraph dev
 ```
+
+`langgraph dev` boots the LangGraph server; the chat UI is mounted on it and
+served at the server root (**http://localhost:2024/**). The graph API on the same
+port powers streaming, thread history, and feedback.
 
 ### During the demo
 
-1. Show Chat LangChain Lite UI — ask questions (concept lookups, setup guides, security advice, etc.)
+1. Show Chat LangChain Lite UI — ask questions (concept lookups, setup guides, security advice, etc.); rate responses 👍/👎 to send feedback to LangSmith
 2. Show traces in LangSmith with online eval scores (`security_advice`, `scope_adherence`, etc.)
 3. Engine analyzes traces and identifies root causes across prompt and code
 4. Add Engine-suggested offline examples — show ability to edit in annotation queue
@@ -121,6 +129,24 @@ streamlit run app.py
 python -m scripts.cleanup
 ```
 
+## The chat UI
+
+The frontend (`web/app.py`) is a [FastHTML](https://fastht.ml) app mounted onto
+the LangGraph server, so a single `langgraph dev` (or one deployment) serves both
+the UI and the graph API from the same origin. It talks to the graph over the
+LangGraph SDK on loopback — it never imports the graph directly.
+
+- **Streaming chat** — responses stream token-by-token over SSE, rendered as
+  markdown client-side (sanitized with DOMPurify).
+- **Feedback** — rate any response 👍/👎 and leave an optional comment; feedback
+  is written to LangSmith (as `user_score` / `user_comment`) keyed to the run, so
+  it shows up on the trace and feeds online evals.
+- **Trace deep-link** — every response has a ↗ Trace link that opens its LangSmith
+  trace.
+- **Thread history** — a sidebar lists prior conversations; reopening a thread
+  rebuilds it from the graph's persisted state, with each response's stored vote
+  restored.
+
 ## Scripts
 
 | Script | What it does |
@@ -132,7 +158,7 @@ python -m scripts.cleanup
 | `python -m scripts.run_evals --threshold 0.7` | Exits with code 1 if scores < 0.7 (used in CI) |
 | `python -m scripts.cleanup` | Resets demo to clean state — see Cleanup section |
 | `python -m scripts.cleanup --full` | Same, plus deletes the LangSmith project (so Engine sees a fresh project on the next demo). Re-run `scripts.setup` after. |
-| `streamlit run app.py` | Start the Chat LangChain Lite UI |
+| `langgraph dev` | Start the graph server with the Chat LangChain Lite UI mounted on it (http://localhost:2024/) |
 
 ## Evaluators
 
@@ -199,7 +225,13 @@ scripts/
 ├── evals.yml                 # CI/CD: label-gated offline evals on PRs to main
 └── auto-label-engine-prs.yml # auto-tags Engine PRs with 'run-evals'
 
-app.py                # Chat LangChain Lite UI (Streamlit)
+web/
+└── app.py           # Chat LangChain Lite UI (FastHTML). Mounted onto the graph
+                     # server via langgraph.json's `http.app`, so the UI and the
+                     # graph API are served from the same origin.
+
+langgraph.json       # LangGraph deployment manifest: exposes the `agent` graph
+                     # and mounts the FastHTML UI (`http.app`).
 ```
 
 ## Cleanup
