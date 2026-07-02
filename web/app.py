@@ -63,7 +63,7 @@ from context import CONTEXT_HUB_REPO
 
 load_dotenv(override=True)
 
-ASSISTANT_ID = "agent"
+ASSISTANT_ID = "chat_langchain_lite"
 
 # The application slug — matches the agent's own run naming (agent/agent.py's
 # `_config`) so the chat UI's traces line up with the scripted path.
@@ -635,7 +635,7 @@ async def send(session, q: str = ""):
     # over SSE, so EventSource reconnects re-attach instead of starting new runs.
     try:
         # Name + tag UI traffic consistently with the scripted path (agent._config),
-        # so the chat UI's runs aren't named after the bare graph ("agent").
+        # so the chat UI's runs aren't named after the bare graph ("chat_langchain_lite").
         # `run_name` is a valid RunnableConfig field the graph honors; the SDK's
         # Config TypedDict just omits it, hence the ignore.
         run = await get_client(url=_api_url()).runs.create(  # ty: ignore[no-matching-overload]

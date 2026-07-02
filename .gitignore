@@ -13,3 +13,4 @@ build/
 # langgraph dev local state
 .langgraph_api/
 .sesskey
+.claude/
