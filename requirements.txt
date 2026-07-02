@@ -170,7 +170,7 @@ langgraph-runtime-inmem==0.29.0
     # via
     #   langgraph-api
     #   langgraph-cli
-langgraph-sdk==0.3.14
+langgraph-sdk==0.3.15
     # via
     #   chat-lc-lite-agent
     #   langgraph
