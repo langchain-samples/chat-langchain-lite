@@ -67,7 +67,7 @@ python -m scripts.setup
 This does three things in one command:
 1. **Creates the LangSmith project** by sending one trace (required before online evaluators can be registered)
 2. **Creates the dataset** `chat-lc-lite-scope-<your-name>` with 3 curated test cases, then tags that version as `baseline` in LangSmith
-3. **Creates 5 online evaluators** in the LangSmith Evaluators UI at 100% sampling rate — every future trace is automatically scored for `security_advice`, `scope_adherence`, `tool_usage`, `response_completeness`, and `factual_accuracy`. Their run rule IDs are saved to `.demo_state.json` so cleanup can tell them apart from evaluators Engine adds.
+3. **Creates 6 online evaluators** in the LangSmith Evaluators UI at 100% sampling rate — every future trace is automatically scored for `security_advice`, `scope_adherence`, `tool_usage`, `response_completeness`, `professional_tone`, and `factual_accuracy`. Their run rule IDs are saved to `.demo_state.json` so cleanup can tell them apart from evaluators Engine adds.
 
 Only needs to be run once. Between demos, run `python -m scripts.cleanup` instead.
 
@@ -76,7 +76,7 @@ Only needs to be run once. Between demos, run `python -m scripts.cleanup` instea
 python -m scripts.generate_traces
 ```
 
-Runs 13 single-turn queries and 3 multi-turn threaded conversations through the buggy agent to populate LangSmith with trace and thread variety beyond the dataset examples.
+Runs 11 single-turn queries and 1 multi-turn threaded conversation through the buggy agent to populate LangSmith with trace and thread variety beyond the dataset examples.
 
 **6. Add GitHub secrets** (for CI/CD)
 
@@ -151,8 +151,8 @@ LangGraph SDK on loopback — it never imports the graph directly.
 
 | Script | What it does |
 |--------|-------------|
-| `python -m scripts.setup` | One-shot setup: creates dataset and creates 5 online evaluators |
-| `python -m scripts.generate_traces` | Runs 13 single-turn queries + 3 multi-turn threads through the buggy agent |
+| `python -m scripts.setup` | One-shot setup: creates dataset and creates 6 online evaluators |
+| `python -m scripts.generate_traces` | Runs 11 single-turn queries + 1 multi-turn thread through the buggy agent |
 | `python -m scripts.run_evals` | Runs offline evals against the dataset and prints scores |
 | `python -m scripts.run_evals --skip-dataset` | Re-runs evals against existing dataset (used in CI) |
 | `python -m scripts.run_evals --threshold 0.7` | Exits with code 1 if scores < 0.7 (used in CI) |
@@ -171,7 +171,7 @@ Two LLM-as-judge evaluators run in CI (offline). Claude Haiku scores each 0 or 1
 
 Online evaluators run automatically on every trace as it arrives in LangSmith. This gives Engine a continuous signal on live traffic, not just offline evals on a fixed dataset.
 
-Five online evaluators are registered by `python -m scripts.setup`: `security_advice`, `scope_adherence`, `tool_usage`, `response_completeness`, and `factual_accuracy`.
+Six online evaluators are registered by `python -m scripts.setup`: `security_advice`, `scope_adherence`, `tool_usage`, `response_completeness`, `professional_tone`, and `factual_accuracy`.
 
 ## CI/CD
 
@@ -222,8 +222,8 @@ scripts/
 └── cleanup.py            # resets demo to clean state after presentation
 
 .github/workflows/
-├── evals.yml                 # CI/CD: label-gated offline evals on PRs to main
-└── auto-label-engine-prs.yml # auto-tags Engine PRs with 'run-evals'
+└── evals.yml                 # CI/CD: offline evals on PRs to main, gated on the
+                              # manually-applied 'run-evals' label
 
 web/
 └── app.py           # Chat LangChain Lite UI (FastHTML). Mounted onto the graph
