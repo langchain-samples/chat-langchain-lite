@@ -176,7 +176,7 @@ langgraph-sdk==0.3.15
     #   langgraph
     #   langgraph-api
     #   langgraph-cli
-langsmith==0.8.3
+langsmith==0.8.18
     # via
     #   chat-lc-lite-agent
     #   deepagents
