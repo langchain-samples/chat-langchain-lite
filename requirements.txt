@@ -259,7 +259,7 @@ python-dotenv==1.2.2
     #   uvicorn
 python-fasthtml==0.14.4
     # via chat-lc-lite-agent
-python-multipart==0.0.27
+python-multipart==0.0.31
     # via python-fasthtml
 pyyaml==6.0.3
     # via
