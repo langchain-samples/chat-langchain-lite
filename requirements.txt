@@ -46,7 +46,7 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   uvicorn
 croniter==6.2.2
     # via langgraph-runtime-inmem
-cryptography==48.0.0
+cryptography==48.0.1
     # via
     #   google-auth
     #   langgraph-api
