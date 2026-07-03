@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Chat LangChain Lite — a LangChain ecosystem chatbot with intentional bugs, built to demo LangSmith Engine"
 requires-python = ">=3.11"
 dependencies = [
-    "langchain-anthropic>=0.3.0",
+    "langchain-anthropic>=1.4.6",
     "langchain-core>=0.3.0",
     "langgraph>=0.2.0",
     "langgraph-sdk>=0.3.15",
