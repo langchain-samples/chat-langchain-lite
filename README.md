@@ -78,9 +78,13 @@ python -m scripts.generate_traces
 
 Runs 11 single-turn queries and 1 multi-turn threaded conversation through the buggy agent to populate LangSmith with trace and thread variety beyond the dataset examples.
 
-**6. Add GitHub secrets** (for CI/CD)
+**6. Add GitHub Actions secrets and variables** (for CI/CD)
 
-In your fork: Settings → Secrets → Actions → add `ANTHROPIC_API_KEY`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, and `LANGSMITH_WORKSPACE_ID`.
+In your fork:
+- Settings → Secrets and variables → Actions → **Secrets** → add `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, and `LANGSMITH_WORKSPACE_ID`
+- Settings → Secrets and variables → Actions → **Variables** → add `DEMO_PRESENTER`
+
+`DEMO_PRESENTER` should match the presenter name used for the demo setup.
 
 > **Important:** When pasting secrets, make sure there are no trailing newlines or spaces.
 
@@ -177,13 +181,19 @@ Six online evaluators are registered by `python -m scripts.setup`: `security_adv
 
 `.github/workflows/evals.yml` runs automatically on every PR to `main`.
 
-Add these secrets to your repo (Settings → Secrets → Actions):
+Add these GitHub Actions secrets to your repo (Settings → Secrets and variables → Actions → Secrets):
 - `ANTHROPIC_API_KEY`
+- `ANTHROPIC_BASE_URL`
+- `ANTHROPIC_CUSTOM_HEADERS`
 - `LANGSMITH_API_KEY`
 - `LANGSMITH_PROJECT`
 - `LANGSMITH_WORKSPACE_ID`
 
+Add this GitHub Actions variable as well (Settings → Secrets and variables → Actions → Variables):
+- `DEMO_PRESENTER`
+
 `LANGSMITH_PROJECT` should match what you used locally — that's the project the agent traces against.
+`DEMO_PRESENTER` should match the presenter name used by the demo setup.
 
 ```
 PR opened → GitHub Actions → run_evals --skip-dataset --threshold 0.7
