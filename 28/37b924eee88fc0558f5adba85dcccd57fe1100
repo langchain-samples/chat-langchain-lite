@@ -1,0 +1,25 @@
+utils/models.py
+  s_1606b487e34545::t_4197da65a6be05 26
+  s_1606b487e34545::t_33874db3559f58 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "2837b924eee88fc0558f5adba85dcccd57fe1100",
+  "prompts": {},
+  "humans": {
+    "h_7cae82992be157": {
+      "author": "Avi Kumar <avirath.kmr@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_1606b487e34545": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70117837-d045-48d0-8abc-6be58b4dbade",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Avi Kumar <avirath.kmr@gmail.com>"
+    }
+  }
+}
