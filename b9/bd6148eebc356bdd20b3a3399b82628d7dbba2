@@ -1,0 +1,24 @@
+docs/superpowers/specs/2026-07-21-gateway-config-pane-design.md
+  s_1606b487e34545::t_b6f1588337a938 1-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "b9bd6148eebc356bdd20b3a3399b82628d7dbba2",
+  "prompts": {},
+  "humans": {
+    "h_7cae82992be157": {
+      "author": "Avi Kumar <avirath.kmr@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_1606b487e34545": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70117837-d045-48d0-8abc-6be58b4dbade",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Avi Kumar <avirath.kmr@gmail.com>"
+    }
+  }
+}
