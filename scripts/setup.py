@@ -51,6 +51,12 @@ def _ls_headers(api_key: str, json_body: bool = False) -> dict:
         headers["Content-Type"] = "application/json"
     return headers
 
+
+# Every raw REST call below passes this. Without it, requests blocks forever:
+# a LangSmith 5xx or a dropped connection leaves setup hung with no output
+# rather than surfacing an error.
+HTTP_TIMEOUT = 30
+
 EVALUATORS = [
     {
         "feedback_key": "security_advice",
@@ -180,12 +186,17 @@ def setup_dataset() -> str:
 # ── Online evaluators ──────────────────────────────────────────────────────────
 
 def get_project_id(ls_client, project_name: str) -> str:
-    projects = list(ls_client.list_projects())
-    project = next((p for p in projects if p.name == project_name), None)
-    if not project:
+    """Resolve a project name to its ID.
+
+    Uses read_project (one indexed lookup) rather than paging through every
+    project in the workspace — that enumeration takes minutes in workspaces
+    with many projects, with no output while it runs.
+    """
+    try:
+        return str(ls_client.read_project(project_name=project_name).id)
+    except Exception:
         print(f"Error: Project '{project_name}' not found. Generate some traces first.")
         sys.exit(1)
-    return str(project.id)
 
 
 def delete_existing_evaluators(api_key: str) -> None:
@@ -200,6 +211,7 @@ def delete_existing_evaluators(api_key: str) -> None:
     resp = requests.get(
         "https://api.smith.langchain.com/api/v1/runs/rules",
         headers=_ls_headers(api_key),
+        timeout=HTTP_TIMEOUT,
     )
     if resp.status_code == 200:
         for rule in resp.json():
@@ -208,6 +220,7 @@ def delete_existing_evaluators(api_key: str) -> None:
                 requests.delete(
                     f"https://api.smith.langchain.com/api/v1/runs/rules/{rule['id']}",
                     headers=_ls_headers(api_key),
+                    timeout=HTTP_TIMEOUT,
                 )
 
     # 2. Then delete platform evaluators (run twice to catch any orphans)
@@ -215,6 +228,7 @@ def delete_existing_evaluators(api_key: str) -> None:
         resp = requests.get(
             "https://api.smith.langchain.com/v1/platform/evaluators",
             headers=_ls_headers(api_key),
+            timeout=HTTP_TIMEOUT,
         )
         if resp.status_code != 200:
             break
@@ -226,6 +240,7 @@ def delete_existing_evaluators(api_key: str) -> None:
             requests.delete(
                 f"https://api.smith.langchain.com/v1/platform/evaluators/{ev_id}",
                 headers=_ls_headers(api_key),
+                timeout=HTTP_TIMEOUT,
             )
         if ids_to_delete:
             print(f"  Deleted {len(ids_to_delete)} existing evaluator(s)")
@@ -274,6 +289,7 @@ def create_online_evaluator(api_key: str, ev: dict, project_id: str, model_json:
         "https://api.smith.langchain.com/api/v1/runs/rules",
         headers=_ls_headers(api_key, json_body=True),
         json=payload,
+        timeout=HTTP_TIMEOUT,
     )
     if resp.status_code in (200, 201):
         print(f"  ✅ {ev['feedback_key']}")
