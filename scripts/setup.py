@@ -163,13 +163,15 @@ def setup_dataset() -> str:
     from langsmith import Client
 
     print(f"\n[2/4] Setting up dataset '{DATASET_NAME}'...")
-    create_or_update_dataset()
+    dataset_id = create_or_update_dataset()
     # The tool-adherence dataset implementation is preserved in evals/dataset.py
     # (create_or_update_tool_adherence_dataset) but not seeded for the demo.
 
+    # Tag by ID, not name: on a fresh create, a name lookup can 404 because the
+    # write hasn't propagated to LangSmith's read path yet.
     ls_client = Client()
     ls_client.update_dataset_tag(
-        dataset_name=DATASET_NAME,
+        dataset_id=dataset_id,
         as_of=datetime.now(timezone.utc),
         tag="baseline",
     )
