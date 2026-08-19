@@ -154,7 +154,7 @@ langgraph==1.2.1
     #   langchain
     #   langgraph-api
     #   langgraph-runtime-inmem
-langgraph-api==0.9.0
+langgraph-api==0.10.0
     # via langgraph-cli
 langgraph-checkpoint==4.1.1
     # via
