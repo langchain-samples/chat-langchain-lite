@@ -8,7 +8,7 @@ A LangChain ecosystem chatbot ("Chat LangChain Lite") with intentional bugs, bui
 2. **Engine proposes a PR fix** — targets the root cause code and opens a PR on your fork
 3. **Engine proposes offline examples and online evals to add** — expand dataset coverage and monitoring with one click
 4. **Offline evals in CI/CD** — the PR can't merge until eval scores pass a threshold
-5. **Before/after scores in LangSmith** — both "before" and "after" experiments created automatically by CI when Engine opens a PR
+5. **Before/after scores in LangSmith** — CI scores the PR branch, and the `baseline-*` experiments seeded by `scripts.setup` provide the "before" reference
 
 ## The bugs
 
@@ -92,7 +92,26 @@ In your fork:
 
 In your fork: Actions → (if prompted) enable workflows. GitHub disables Actions on forks by default — this step is required for offline evals to run on PRs.
 
-**8. Connect Engine**
+**8. Create the `run-evals` label**
+
+CI only fires when a PR carries the `run-evals` label, and a fresh fork has no such label:
+
+```bash
+gh label create run-evals -R <your-fork> -c "0E8A16" -d "Trigger offline eval CI on this PR"
+```
+
+**9. Pin the `baseline` tag on your fork**
+
+`scripts.cleanup` force-resets `main` to a git tag named `baseline` so the demo can be re-run from the buggy start state. Nothing creates this tag automatically, and forks do not reliably inherit it — so point it at the commit you intend to demo from:
+
+```bash
+git tag -f baseline <your-demo-start-commit>
+git push origin refs/tags/baseline --force
+```
+
+> **Important:** verify the tag points at a commit that still contains `web/app.py` and `utils/models.py`. If `baseline` points at an older commit, cleanup will silently roll `main` back past the chat UI and the gateway routing. If the tag is absent, cleanup logs `'baseline' tag not found … Skipping.` and the reset step quietly does nothing.
+
+**10. Connect Engine**
 
 In LangSmith Engine, connect your LangSmith project (`LANGSMITH_PROJECT`) and your GitHub fork so Engine can read traces and open PRs against your repo.
 
@@ -122,10 +141,11 @@ port powers streaming, thread history, and feedback.
 3. Engine analyzes traces and identifies root causes across prompt and code
 4. Add Engine-suggested offline examples — show ability to edit in annotation queue
 5. Engine opens a PR on your fork
-6. GitHub Actions runs evals on main (before experiment) and the PR branch (after experiment) — after scores pass ✅
-7. Merge the PR
-8. Add Engine-suggested online eval
-9. Show the experiments in LangSmith — before/after score comparison
+6. **Apply the `run-evals` label to the PR** — CI is gated on this label and will not start without it
+7. GitHub Actions runs evals on the PR branch — scores pass ✅
+8. Merge the PR
+9. Add Engine-suggested online eval
+10. Show the experiments in LangSmith — compare the PR's run against the pre-seeded `baseline-*` experiments
 
 ### After the demo
 
@@ -196,13 +216,15 @@ Add this GitHub Actions variable as well (Settings → Secrets and variables →
 `DEMO_PRESENTER` should match the presenter name used by the demo setup.
 
 ```
-PR opened → GitHub Actions → run_evals --skip-dataset --threshold 0.7
-                                          ↓
-                               scores < 0.7 → ❌ blocks merge
-                               scores ≥ 0.7 → ✅ mergeable
+PR opened → apply `run-evals` label → GitHub Actions → run_evals --skip-dataset --threshold 0.7
+                                                          ↓
+                                               scores < 0.7 → ❌ blocks merge
+                                               scores ≥ 0.7 → ✅ mergeable
 ```
 
-CI runs evals on both the base branch (creating the "before" experiment) and the PR branch (creating the "after" experiment) in LangSmith automatically. Because `--skip-dataset` fetches the existing dataset from LangSmith by name, any examples Engine adds to the dataset are included in the eval run automatically.
+**CI is gated on a manually applied `run-evals` label.** Engine opens both quick code-fix PRs (no eval gating wanted) and regression-prevention PRs (eval gating wanted), so the presenter clicks the label on the latter to fire CI. Without the label, nothing runs.
+
+CI runs evals on the **PR branch only**, creating a single experiment in LangSmith. There is no "before" run — the most common demo fixes (the `AGENTS.md` prompt, tone) live in Context Hub, so the PR diff is empty for those and a before/after pair would score identically. The "before" reference is the `baseline-haiku-…` / `baseline-sonnet-…` experiments seeded by `scripts.setup`. Because `--skip-dataset` fetches the existing dataset from LangSmith by name, any examples Engine adds to the dataset are included in the eval run automatically.
 
 ## Repo structure
 
@@ -254,7 +276,7 @@ python -m scripts.cleanup
 
 This does five things:
 1. **Resets dataset to original 3 examples** — deletes all examples and re-uploads the canonical 3, removing anything Engine added
-2. **Deletes CI/Engine experiments** — keeps the `baseline-*` seed experiments from `setup.py` (the Haiku-vs-Sonnet "before" reference); CI/CD regenerates before/after experiments on every PR
+2. **Deletes CI/Engine experiments** — keeps the `baseline-*` seed experiments from `setup.py` (the Haiku-vs-Sonnet "before" reference); CI regenerates its experiment on every labeled PR
 3. **Removes Engine-added online evaluators** — uses saved run rule IDs from `.demo_state.json` to delete only evaluators Engine added, leaving the 5 from `setup.py` in place
 4. **Re-seeds Context Hub to the buggy baseline** — re-pushes the seed `AGENTS.md` and demo skills, restoring the buggy prompt if it was fixed in the Context Hub UI during the demo (a code/dataset reset can't touch Context Hub)
 5. **Resets main to the `baseline` tag** — force-resets to remove Engine's merged PR, restoring the buggy agent state
