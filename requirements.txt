@@ -246,7 +246,7 @@ pydantic==2.13.4
     #   langsmith
 pydantic-core==2.46.4
     # via pydantic
-pyjwt==2.13.0
+pyjwt==2.15.0
     # via langgraph-api
 python-dateutil==2.9.0.post0
     # via
