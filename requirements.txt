@@ -25,7 +25,7 @@ blockbuster==1.5.26
     # via langgraph-runtime-inmem
 bracex==2.6
     # via wcmatch
-certifi==2026.4.22
+certifi==2026.10.19
     # via
     #   httpcore
     #   httpx
