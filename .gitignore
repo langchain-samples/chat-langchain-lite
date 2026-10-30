@@ -1,19 +1,12 @@
-.env
-.demo_state.json
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-.DS_Store
-*.egg-info/
+node_modules/
 dist/
-build/
-.pytest_cache/
+.mda/
+.DS_Store
 
-# langgraph dev local state
-.langgraph_api/
-.sesskey
-.claude/
+.env
+.env.local
+.env.*.local
+mise.local.toml
 
-# superpowers docs
-docs/
+# Planning docs stay out of the repo.
+docs/plan/

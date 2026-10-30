@@ -1,0 +1,51 @@
+name: Pages
+
+# Repo variable changes don't trigger a build: rerun this by hand after setting agent URLs.
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "pnpm-lock.yaml", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f
+        with:
+          mode: firewall-free
+      - run: sfw pnpm install --frozen-lockfile
+      - name: Build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_AGENT_URL_PRODUCTION: ${{ vars.VITE_AGENT_URL_PRODUCTION }}
+          VITE_AGENT_URL_DEVELOPMENT: ${{ vars.VITE_AGENT_URL_DEVELOPMENT }}
+          VITE_LANGSMITH_WORKSPACE_ID: ${{ vars.VITE_LANGSMITH_WORKSPACE_ID || vars.LANGSMITH_WORKSPACE_ID }}
+          VITE_OAUTH_CLIENT_ID: ${{ vars.VITE_OAUTH_CLIENT_ID }}
+          VITE_LANGSMITH_ORGANIZATION_ID: ${{ vars.VITE_LANGSMITH_ORGANIZATION_ID }}
+          VITE_LANGSMITH_SSO_SLUG: ${{ vars.VITE_LANGSMITH_SSO_SLUG }}
+        run: mise run //web:build
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

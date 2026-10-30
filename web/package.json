@@ -1,0 +1,33 @@
+{
+  "name": "chat-langchain-lite-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --host localhost --port 5173 --strictPort",
+    "build": "vp build",
+    "check": "vp check",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "@langchain/langgraph-sdk": "1.12.5",
+    "@langchain/macaw-components": "1.0.0-beta.9",
+    "@langchain/react": "1.2.5",
+    "@phosphor-icons/react": "2.1.10",
+    "@radix-ui/react-collapsible": "1.2.1",
+    "@radix-ui/react-use-controllable-state": "1.3.0",
+    "oidc-client-ts": "3.5.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "postcss": "8.5.30",
+    "tailwindcss": "3.4.19",
+    "vite-plus": "1.3.0"
+  }
+}

@@ -1,0 +1,11 @@
+[tasks.dev]
+description = "Run the agent locally with mda dev (http://localhost:2024)"
+run = "node_modules/.bin/mda dev . --port 2024"
+
+[tasks.check]
+description = "Format check, lint and typecheck"
+run = ["pnpm run fmt:check", "pnpm run lint", "pnpm run typecheck"]
+
+[tasks.test]
+description = "Unit tests"
+run = "pnpm run test"

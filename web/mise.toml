@@ -1,0 +1,16 @@
+[tasks.dev]
+description = "Run the web app at http://localhost:5173 against the local agent"
+env = { VITE_LANGSMITH_WORKSPACE_ID = "{{env.LANGSMITH_WORKSPACE_ID}}" }
+run = "pnpm run dev"
+
+[tasks.build]
+description = "Build the static site into dist/"
+run = "pnpm run build"
+
+[tasks.check]
+description = "Format check, lint and typecheck (Vite+)"
+run = "pnpm run check"
+
+[tasks.test]
+description = "Unit tests (Vite+)"
+run = "pnpm run test"

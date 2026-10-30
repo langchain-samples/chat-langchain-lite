@@ -1,0 +1,41 @@
+name: Health
+
+# Checks the deployed demo every day. While anything fails, one issue labeled demo-health stays
+# open and gets each new report; it closes once everything passes again.
+on:
+  schedule:
+    - cron: "41 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+concurrency:
+  group: health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    if: vars.LANGSMITH_WORKSPACE_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      LANGSMITH_WORKSPACE_ID: ${{ vars.LANGSMITH_WORKSPACE_ID }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f
+        with:
+          mode: firewall-free
+      - run: sfw pnpm install --frozen-lockfile
+      - run: mise run demo:check -- --github-issue
+      # GitHub disables scheduled workflows after 60 days without repo activity.
+      - name: Keep the schedules on
+        if: always()
+        run: |
+          gh workflow enable trickle.yml -R "$GITHUB_REPOSITORY"
+          gh workflow enable health.yml -R "$GITHUB_REPOSITORY"

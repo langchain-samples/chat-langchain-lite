@@ -1,0 +1,58 @@
+monorepo_root = true
+
+[monorepo]
+config_roots = ["agent", "web", "evals"]
+
+[tools]
+node = "24.22.0"
+pnpm = "12.14.0"
+lefthook = "2.2.2"
+gh = "2.102.0"
+"github:langchain-ai/langsmith-cli" = "0.3.3"
+
+# Per-DE settings (LANGSMITH_WORKSPACE_ID) go in mise.local.toml. Secrets live only in agent/.env,
+# which mise deliberately does not load. Don't add [env] defaults here: they override CI's variables.
+
+[tasks.setup]
+description = "Install dependencies and git hooks, and create agent/.env"
+run = [
+  "pnpm install",
+  "lefthook install",
+  "node scripts/setup-env.mjs",
+]
+
+[tasks.dev]
+description = "Run the local agent (:2024) and web app (:5173)"
+depends = ["//agent:dev", "//web:dev"]
+
+[tasks.check]
+description = "Format check, lint and typecheck every package"
+depends = ["//agent:check", "//web:check", "//evals:check"]
+
+[tasks.test]
+description = "Run unit tests for every package"
+depends = ["//agent:test", "//web:test", "//evals:test"]
+
+[tasks."demo:prepare"]
+description = "Seed the dataset, create evaluators, send traffic and pre-run experiments"
+run = "mise run //evals:prepare"
+
+[tasks."demo:install"]
+description = "Set up, deploy both environments from GitHub, publish Pages and prepare the demo: [--redeploy] [--replace]"
+run = ["mise run setup", "mise run //evals:install"]
+
+[tasks."demo:trickle"]
+description = "Send a few conversations with feedback to production, as the Trickle workflow does"
+run = "mise run //evals:trickle"
+
+[tasks."demo:check"]
+description = "Check the deployed demo end to end, as the Health workflow does"
+run = "mise run //evals:health"
+
+[tasks."demo:reset"]
+description = "Close Engine's fix PRs, replace its board and refresh the experiments; --yes does it"
+run = "mise run //evals:reset"
+
+[tasks."demo:uninstall"]
+description = "List everything the demo created in LANGSMITH_WORKSPACE_ID; --yes deletes it"
+run = "mise run //evals:uninstall"

@@ -1,0 +1,24 @@
+pre-commit:
+  parallel: true
+  commands:
+    agent-guard:
+      run: node scripts/check-agent-manifest.mjs
+    agent-fmt-lint:
+      glob: "agent/**/*.{ts,json,md}"
+      root: "agent/"
+      run: pnpm exec oxfmt --check {staged_files} && pnpm exec oxlint {staged_files}
+    evals-fmt-lint:
+      glob: "evals/**/*.{ts,js,json}"
+      root: "evals/"
+      run: pnpm exec oxfmt --check {staged_files} && pnpm exec oxlint {staged_files}
+    web-check:
+      glob: "web/**/*.{ts,tsx,css,json}"
+      root: "web/"
+      run: pnpm exec vp check
+
+pre-push:
+  commands:
+    check:
+      run: mise run check
+    test:
+      run: mise run test

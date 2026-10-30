@@ -1,274 +1,144 @@
-# chat-lc-lite
+# Chat LangChain Lite
 
-A LangChain ecosystem chatbot ("Chat LangChain Lite") with intentional bugs, built to demonstrate LangSmith Engine's ability to identify issues in agent traces and propose fixes via PR. The agent answers questions about LangChain, LangGraph, LangSmith, and Deep Agents using three tools: `lookup_concept`, `get_setup_guide`, and `get_security_advice`.
+A small LangChain docs assistant that Deployed Engineers use to demo LangSmith. It runs as a TypeScript [Managed Deep Agent](https://docs.langchain.com/langsmith/javascript/managed-deep-agents-quickstart) with a React chat app on GitHub Pages.
 
-## What this demos
+## Repo layout
 
-1. **Engine identifies bugs** — the agent has bugs in the prompt and code that cause bad responses
-2. **Engine proposes a PR fix** — targets the root cause code and opens a PR on your fork
-3. **Engine proposes offline examples and online evals to add** — expand dataset coverage and monitoring with one click
-4. **Offline evals in CI/CD** — the PR can't merge until eval scores pass a threshold
-5. **Before/after scores in LangSmith** — both "before" and "after" experiments created automatically by CI when Engine opens a PR
-
-## The bugs
-
-Bugs are spread across three files so Engine has to reason about code, not just prompts:
-
-| Bug | File / Location | Effect | Caught by |
-|-----|------|--------|-----------|
-| "Never use tools, never decline" instruction | LangSmith Context Hub (`chat-lc-lite-agent-robert` / AGENTS.md) — fix in the Context Hub UI, not the repo | Answers any topic; answers from memory instead of calling tools | `tool_usage`, `scope_adherence` |
-| Casual / emoji voice | LangSmith Context Hub (`chat-lc-lite-agent-robert` / AGENTS.md) — fix in the Context Hub UI, not the repo | Every response starts with "Hey there! 👋", uses emojis throughout, ends with "Happy building! 🚀" | `professional_tone` |
-| Wrong docs URL in SAFE_PATTERNS | `agent/tools.py` | Agent recommends stale `python.langchain.com` / `js.langchain.com` links instead of `docs.langchain.com` | `security_advice` |
-| Wrong LangGraph min Python version | `agent/tools.py` | Returns "3.7+" instead of the correct "3.10+" | `factual_accuracy` |
-| `max_tokens=300` | `agent/agent.py` | Truncates responses on complex technical questions | `response_completeness` |
-
-## Setup
-
-**1. Fork and clone this repo**
-
-**2. Create a virtual environment**
-```bash
-uv sync
-source .venv/bin/activate
+```
+agent/   Managed Deep Agent (deployed with mda)
+web/     Vite+ / React / Macaw chat app (GitHub Pages)
+evals/   eval dataset, hosted evaluators and the demo prepare step
+scripts/ setup and deploy helpers
 ```
 
-Or with pip:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e . "langgraph-cli[inmem]"
-```
+`agent/`, `web/` and `evals/` share one pnpm workspace. `agent/` must never contain a lockfile: `mda` copies the folder into its build, and a lockfile there breaks LangSmith's builder.
 
-> `uv sync` installs `langgraph-cli` (the `dev` dependency group) for you; the
-> pip path installs it explicitly. The CLI runs the graph server that serves both
-> the API and the chat UI (`langgraph dev`).
+## Quick start
 
-**3. Configure environment**
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
-```
-ANTHROPIC_API_KEY=your-key
-LANGSMITH_API_KEY=your-demo-workspace-api-key
-LANGSMITH_PROJECT=chat-lc-lite
-LANGSMITH_WORKSPACE_ID=your-demo-workspace-id
-LANGSMITH_TRACING=true
-```
-
-> If multiple presenters share a LangSmith workspace, use a unique `LANGSMITH_PROJECT` per person (e.g. `chat-lc-lite-morgan`) to avoid mixing traces and online evaluators. The project is created automatically on first use.
->
-> In an agent-based LangSmith workspace, the first trace creates an agent whose ID matches `LANGSMITH_PROJECT`, and the traces land in its Production environment. `scripts.setup` attaches the demo resources to that agent (the eval dataset and its experiments, the Context Hub AGENTS.md repo, and the demo skills), so they show up under the agent without being added by hand. The online evaluators already run on the agent's Production environment.
-
-**4. Run one-shot setup**
-```bash
-python -m scripts.setup
-```
-
-This does three things in one command:
-1. **Creates the LangSmith project** by sending one trace (required before online evaluators can be registered)
-2. **Creates the dataset** `chat-lc-lite-scope-<your-name>` with 3 curated test cases, then tags that version as `baseline` in LangSmith
-3. **Creates 6 online evaluators** in the LangSmith Evaluators UI at 100% sampling rate — every future trace is automatically scored for `security_advice`, `scope_adherence`, `tool_usage`, `response_completeness`, `professional_tone`, and `factual_accuracy`. Their run rule IDs are saved to `.demo_state.json` so cleanup can tell them apart from evaluators Engine adds.
-
-Only needs to be run once. Between demos, run `python -m scripts.cleanup` instead.
-
-**5. Generate traces**
-```bash
-python -m scripts.generate_traces
-```
-
-Runs 11 single-turn queries and 1 multi-turn threaded conversation through the buggy agent to populate LangSmith with trace and thread variety beyond the dataset examples.
-
-**6. Add GitHub Actions secrets and variables** (for CI/CD)
-
-In your fork:
-- Settings → Secrets and variables → Actions → **Secrets** → add `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, and `LANGSMITH_WORKSPACE_ID`
-- Settings → Secrets and variables → Actions → **Variables** → add `DEMO_PRESENTER`
-
-`DEMO_PRESENTER` should match the presenter name used for the demo setup.
-
-> **Important:** When pasting secrets, make sure there are no trailing newlines or spaces.
-
-**7. Enable GitHub Actions**
-
-In your fork: Actions → (if prompted) enable workflows. GitHub disables Actions on forks by default — this step is required for offline evals to run on PRs.
-
-**8. Connect Engine**
-
-In LangSmith Engine, connect your LangSmith project (`LANGSMITH_PROJECT`) and your GitHub fork so Engine can read traces and open PRs against your repo.
-
-## Demo flow
-
-### Before the demo
+Prerequisite: [mise](https://mise.jdx.dev). It installs Node, pnpm, `gh`, `lefthook`, and the `langsmith` CLI.
 
 ```bash
-# One-shot setup: creates dataset, sets up online evaluators
-python -m scripts.setup
-
-# Generate more traces including threads
-python -m scripts.generate_traces
-
-# Start the chat UI (graph API + FastHTML frontend, served from one origin)
-uv run langgraph dev
+mise install
+mise run setup        # installs deps and git hooks, creates agent/.env
 ```
 
-`uv run langgraph dev` boots the LangGraph server; the chat UI is mounted on it and
-served at the server root (**http://localhost:2024/**). The graph API on the same
-port powers streaming, thread history, and feedback.
+Then:
 
-### During the demo
+1. Put your LangSmith personal access token in `agent/.env` as `LANGSMITH_API_KEY`. On an MDM-managed Mac, `setup` fills `LANGSMITH_GATEWAY_API_KEY` from `LC_GATEWAY_KEY`; otherwise paste your LangChain Inc Gateway key.
+2. Add your workspace to `mise.local.toml` (git-ignored):
 
-1. Show Chat LangChain Lite UI — ask questions (concept lookups, setup guides, security advice, etc.); rate responses 👍/👎 to send feedback to LangSmith
-2. Show traces in LangSmith with online eval scores (`security_advice`, `scope_adherence`, etc.)
-3. Engine analyzes traces and identifies root causes across prompt and code
-4. Add Engine-suggested offline examples — show ability to edit in annotation queue
-5. Engine opens a PR on your fork
-6. GitHub Actions runs evals on main (before experiment) and the PR branch (after experiment) — after scores pass ✅
-7. Merge the PR
-8. Add Engine-suggested online eval
-9. Show the experiments in LangSmith — before/after score comparison
+   ```toml
+   [env]
+   LANGSMITH_WORKSPACE_ID = "<your workspace id>"
+   ```
 
-### After the demo
+3. Run it:
 
-```bash
-python -m scripts.cleanup
-```
+   ```bash
+   mise run dev          # agent on http://localhost:2024, app on http://localhost:5173
+   ```
 
-## The chat UI
+Locally, `mda dev` doesn't enforce sign-in, so any value works on the sign-in page. Deployed agents check that your token belongs to a member of their workspace.
 
-The frontend (`web/app.py`) is a [FastHTML](https://fastht.ml) app mounted onto
-the LangGraph server, so a single `langgraph dev` (or one deployment) serves both
-the UI and the graph API from the same origin. It talks to the graph over the
-LangGraph SDK on loopback — it never imports the graph directly.
+## Tasks
 
-- **Streaming chat** — responses stream token-by-token over SSE, rendered as
-  markdown client-side (sanitized with DOMPurify).
-- **Feedback** — rate any response 👍/👎 and leave an optional comment; feedback
-  is written to LangSmith (as `user_score` / `user_comment`) keyed to the run, so
-  it shows up on the trace and feeds online evals.
-- **Trace deep-link** — every response has a ↗ Trace link that opens its LangSmith
-  trace.
-- **Thread history** — a sidebar lists prior conversations; reopening a thread
-  rebuilds it from the graph's persisted state, with each response's stored vote
-  restored.
+| Task | What it does |
+|---|---|
+| `mise run setup` | Install dependencies and git hooks, create `agent/.env` |
+| `mise run dev` | Run the agent and the web app locally |
+| `mise run check` | Format check, lint and typecheck |
+| `mise run test` | Unit tests |
+| `mise run demo:prepare` | Seed the eval dataset, create the hosted evaluators and triage queue, send sample traffic, and pre-run the experiments |
+| `mise run demo:install` | Set up, create both environments as GitHub-connected deployments, turn on previews and Engine fix verification, publish Pages, then run `demo:prepare` |
+| `mise run demo:trickle` | Send a few conversations with feedback to production, as the Trickle workflow does |
+| `mise run demo:check` | Check the deployed demo end to end, as the Health workflow does |
+| `mise run demo:reset` | Show what a reset would do. `--yes` closes Engine's fix PRs, replaces its board and refreshes the experiments |
+| `mise run demo:uninstall` | List everything the demo created in the workspace. `--yes` deletes it |
 
-## Scripts
+## Evals
 
-| Script | What it does |
-|--------|-------------|
-| `python -m scripts.setup` | One-shot setup: creates dataset and creates 6 online evaluators |
-| `python -m scripts.generate_traces` | Runs 11 single-turn queries + 1 multi-turn thread through the buggy agent |
-| `python -m scripts.run_evals` | Runs offline evals against the dataset and prints scores |
-| `python -m scripts.run_evals --skip-dataset` | Re-runs evals against existing dataset (used in CI) |
-| `python -m scripts.run_evals --threshold 0.7` | Exits with code 1 if scores < 0.7 (used in CI) |
-| `python -m scripts.cleanup` | Resets demo to clean state — see Cleanup section |
-| `python -m scripts.cleanup --full` | Same, plus deletes the LangSmith project (so Engine sees a fresh project on the next demo). Re-run `scripts.setup` after. |
-| `uv run langgraph dev` | Start the graph server with the Chat LangChain Lite UI mounted on it (http://localhost:2024/) |
+`mise run demo:prepare` (or **Actions → Prepare demo**) gets a workspace ready for the demo. It's safe to re-run; finished work is skipped.
 
-## Evaluators
+1. Seeds the `chat-langchain-lite` dataset from `evals/dataset/examples.json`. Each example is a question plus assertions a correct answer must satisfy.
+2. Creates the hosted evaluators: the built-in Assertions judge, a Jev decision model for tone, a gpt-6-luna tone judge (`professional_tone_llm`) with an alignment queue for tuning it against human labels (on for experiments, attached but off for traces), a JavaScript check that answers cite the docs they searched, and LangSmith's Trajectory Accuracy judge on both tracing projects. It also creates a triage annotation queue that collects thumbs-down answers. The dataset, queue, evaluators and their prompts are tagged to the `chat-langchain-lite` agent, so they show up under it in LangSmith.
+3. Sends sample questions to `production`.
+4. Pre-runs three experiments: production, development, and development with gpt-6-luna.
 
-Two LLM-as-judge evaluators run in CI (offline). Claude Haiku scores each 0 or 1:
+Use `--only <steps>`, `--split demo` and `--roles <roles>` to run part of it. It needs `LANGSMITH_API_KEY` (from `agent/.env` or a repo secret), `LANGSMITH_WORKSPACE_ID`, both environments deployed, `development` ahead of `main` (it warns otherwise), and the workspace secret `LC_GATEWAY_KEY` for the tone evaluator.
 
-- **`tool_selection`** — did the agent ground its response in tool output rather than answering from memory? Goes 0→1 when the bad system prompt is fixed.
-- **`scope_adherence`** — did the agent stay LangChain-ecosystem-only and decline off-topic questions?
+## How deploys work
 
-## Online Evaluators
+One agent, `chat-langchain-lite`, per workspace, with two environments. Both are GitHub-connected deployments: LangSmith rebuilds `agent/` from the environment's branch on every push.
 
-Online evaluators run automatically on every trace as it arrives in LangSmith. This gives Engine a continuous signal on live traffic, not just offline evals on a fixed dataset.
+| Environment | Builds from | Deployment type |
+|---|---|---|
+| `production` | `main` | `PRODUCTION_DEPLOYMENT_TYPE` when install creates it (default `dev`) |
+| `development` | `development` | `dev` |
 
-Six online evaluators are registered by `python -m scripts.setup`: `security_advice`, `scope_adherence`, `tool_usage`, `response_completeness`, `professional_tone`, and `factual_accuracy`.
+LangSmith builds whether or not CI passed, so `main` and `development` are protected: merging a pull request needs a passing `check`. Admins can still push directly.
 
-## CI/CD
+Each build syncs `agent/instructions.md` and `agent/skills/` to a Context Hub repo named after the deployment, with git winning. The Gateway key, the CORS allow-list and the sign-in settings are deployment secrets, which `mise run demo:install` sets.
 
-`.github/workflows/evals.yml` runs automatically on every PR to `main`.
+`development` runs one commit ahead of `main` on purpose, so the demo has a candidate to compare against production. To release it, open a pull request from `development` into `main` and merge it with a merge commit. A squash merge leaves `development` looking ahead with nothing new. After anything lands on `main` directly, merge `main` back into `development`.
 
-Add these GitHub Actions secrets to your repo (Settings → Secrets and variables → Actions → Secrets):
-- `ANTHROPIC_API_KEY`
-- `ANTHROPIC_BASE_URL`
-- `ANTHROPIC_CUSTOM_HEADERS`
-- `LANGSMITH_API_KEY`
-- `LANGSMITH_PROJECT`
-- `LANGSMITH_WORKSPACE_ID`
+A pull request into `development` labeled `preview` gets its own preview deployment. It's torn down when the pull request closes. Engine labels its fix pull requests this way, replays the issue's production traces against `development` and the preview, and shows on its board whether the fix worked.
 
-Add this GitHub Actions variable as well (Settings → Secrets and variables → Actions → Variables):
-- `DEMO_PRESENTER`
+The deployment type is fixed when a deployment is first created. Changing it later means deleting and recreating the deployment.
 
-`LANGSMITH_PROJECT` should match what you used locally — that's the project the agent traces against.
-`DEMO_PRESENTER` should match the presenter name used by the demo setup.
+## Fork setup
 
-```
-PR opened → GitHub Actions → run_evals --skip-dataset --threshold 0.7
-                                          ↓
-                               scores < 0.7 → ❌ blocks merge
-                               scores ≥ 0.7 → ✅ mergeable
-```
+1. Fork this repo with **Copy the `main` branch only** unchecked, so you get `development` too. For a fork that only has `main`, add the original repo as the `upstream` remote and run `git fetch upstream development && git push origin upstream/development:development`.
+2. In LangSmith, start a new deployment from GitHub and give LangSmith's GitHub App access to your fork. You can cancel before creating the deployment.
+3. Run `mise run demo:install`. It needs `gh` signed in and `agent/.env` filled in. It:
+   - sets the `LANGSMITH_API_KEY` repo secret if it's missing, and the `LANGSMITH_WORKSPACE_ID` variable
+   - protects `main` and `development`, and turns on GitHub Pages
+   - creates both environments as GitHub-connected deployments and waits for their first build
+   - sets the `VITE_AGENT_URL_DEVELOPMENT` and `VITE_AGENT_URL_PRODUCTION` variables, plus `VITE_LANGSMITH_ORGANIZATION_ID`, `VITE_LANGSMITH_SSO_SLUG` when the org uses SSO, and `VITE_OAUTH_CLIENT_ID` when `agent/.env` has one
+   - turns on previews for `development`, and creates the Engine board on production (see [Engine fix verification](#engine-fix-verification))
+   - creates the `maintainers` environment, so the Reset and Teardown workflows wait for your approval
+   - turns on issues, where the Health workflow reports problems
+   - publishes Pages and runs `demo:prepare`
 
-CI runs evals on both the base branch (creating the "before" experiment) and the PR branch (creating the "after" experiment) in LangSmith automatically. Because `--skip-dataset` fetches the existing dataset from LangSmith by name, any examples Engine adds to the dataset are included in the eval run automatically.
+   Re-running skips what's done, but updates the deployments' secrets when they change; `--redeploy` rebuilds both environments. A workspace whose environments were deployed with the mda CLI needs `--replace` once: it deletes them and creates them again from GitHub, keeping their tracing projects and rules.
+4. Your app is at `https://<you>.github.io/<repo>/`.
 
-## Repo structure
+### Sign in with LangSmith
 
-```
-context/
-└── __init__.py       # get_prompt() — pulls the agent's system prompt from
-                      # LangSmith Context Hub at runtime. The prompt content
-                      # lives in the hub, not this repo (Bugs 1 & 5 are fixed
-                      # in the Context Hub UI, not via code PR).
+The app signs people in with their LangSmith account, and keeps personal access tokens as a fallback. Both stay in the browser tab and go only to your agent and to the LangSmith API.
 
-agent/
-├── tools.py          # concept lookup, setup guides, security advice (Bugs 2 & 3)
-└── agent.py          # create_agent + FilesystemMiddleware (Bug 4 — max_tokens)
+1. Ask an org admin to register an OAuth app under **Settings → OAuth applications**: type **Public**, redirect URIs `https://<you>.github.io/<repo>/` (trailing slash included) and `http://localhost`, scopes `openid`, `email`, `profile` and `offline_access`. It needs the org's `sign_in_with_langsmith` flag.
+2. Put its client id (`lsc_…`) in `agent/.env` as `OAUTH_CLIENT_ID` and re-run `mise run demo:install`.
 
-utils/
-└── context_hub.py    # setup-time push helper. Holds the *initial seed* for
-                      # Context Hub only; not the runtime source of truth.
+LangSmith lets any of its users approve the app, so the agent admits only tokens issued to this app for members of your org. People in several orgs choose one on LangSmith's consent page; if they choose another, the app sends them back to choose again. The consent page lists only the orgs of the account they're signed in to LangSmith with. When the org uses SSO, sign-in goes through its SSO login first, which also switches a LangSmith session signed in with another account; otherwise people sign out of LangSmith and back in with the right login. The sign-in screen remembers the last account's email (no tokens) in `localStorage`. Keys reach the agent through LangSmith's own check of the workspace, the way Studio and Engine call it. People who sign in with a key see only their own threads in the app; the API would let them read everyone's.
 
-evals/
-├── dataset.py        # creates per-user LangSmith dataset (3 curated examples)
-└── evaluators.py     # 2 LLM-as-judge offline evaluators (used in CI)
+For local sign-in, put `VITE_OAUTH_CLIENT_ID=lsc_…`, `VITE_LANGSMITH_ORGANIZATION_ID` and `VITE_LANGSMITH_SSO_SLUG` (if any) in `web/.env.development.local`, and `OAUTH_CLIENT_ID` and `ALLOWED_ORGANIZATION_ID` in `agent/.env`.
 
-scripts/
-├── setup.py          # one-shot setup: dataset + online evaluators + Context Hub
-├── generate_traces.py    # populate LangSmith with extra traces and threads
-├── run_evals.py          # offline evals + CI threshold check
-└── cleanup.py            # resets demo to clean state after presentation
+### Engine fix verification
 
-.github/workflows/
-└── evals.yml                 # CI/CD: offline evals on PRs to main, gated on the
-                              # manually-applied 'run-evals' label
+Install creates the Engine board on the `chat-langchain-lite-production` tracing project, which starts a paid scan. The board scans daily at the reduced level, up to 250 LCU a month, fixes `agent/` against `development`, and verifies each fix on its PR's preview. Before installing, install Engine's GitHub App on your fork. It's a separate app from the deployments' one, and needs write access to checks, issues and pull requests.
 
-web/
-└── app.py           # Chat LangChain Lite UI (FastHTML). Mounted onto the graph
-                     # server via langgraph.json's `http.app`, so the UI and the
-                     # graph API are served from the same origin.
+Fix verification needs the `enable_engine_issue_validation` flag on the workspace.
 
-langgraph.json       # LangGraph deployment manifest: exposes the `agent` graph
-                     # and mounts the FastHTML UI (`http.app`).
-```
+Engine's fix PRs can't be merged: the `merge-guard` check stays pending on them. Show the verdict instead.
 
-## Cleanup
+## Keeping the demo running
 
-Run after the demo to reset everything for the next presenter:
+Once installed, GitHub Actions keep the demo ready. They use the `LANGSMITH_API_KEY` repo secret; for a shared demo, make it a service key with the Editor role on the demo's workspace only.
 
-```bash
-python -m scripts.cleanup
-```
+| Workflow | When | What it does |
+|---|---|---|
+| Trickle | Every 4 hours | A few conversations with production, some with a follow-up and feedback, so there are always recent traces and evidence for Engine |
+| Health | Daily | Checks the deployments, sign-in, Pages, the Gateway key, Engine and the schedules. While anything fails, one issue labeled `demo-health` stays open |
+| Reset | By hand, after approval | Closes Engine's fix PRs, replaces its board, sends traffic and refreshes the experiments. Branches stay as they are |
+| Teardown | By hand, after approval | Runs `demo:uninstall --yes` |
+| Prepare demo | By hand | Runs `demo:prepare` |
 
-This does five things:
-1. **Resets dataset to original 3 examples** — deletes all examples and re-uploads the canonical 3, removing anything Engine added
-2. **Deletes CI/Engine experiments** — keeps the `baseline-*` seed experiments from `setup.py` (the Haiku-vs-Sonnet "before" reference); CI/CD regenerates before/after experiments on every PR
-3. **Removes Engine-added online evaluators** — uses saved run rule IDs from `.demo_state.json` to delete only evaluators Engine added, leaving the 5 from `setup.py` in place
-4. **Re-seeds Context Hub to the buggy baseline** — re-pushes the seed `AGENTS.md` and demo skills, restoring the buggy prompt if it was fixed in the Context Hub UI during the demo (a code/dataset reset can't touch Context Hub)
-5. **Resets main to the `baseline` tag** — force-resets to remove Engine's merged PR, restoring the buggy agent state
+Reset and Teardown take a typed confirmation and wait in the `maintainers` environment for approval. Other people may be mid-demo, so tell them first. To get Health's alerts in Slack, run `/github subscribe <owner>/<repo> issues +label:"demo-health"` in a channel.
 
-After cleanup, the demo is ready to run again — no need to re-run `setup.py`.
+## Uninstall
 
-For a **full** reset that also removes the LangSmith project (clearing all traces and Engine's per-project issue state):
+`mise run demo:uninstall` lists everything the demo created in the workspace, with what each evaluator is attached to. `mise run demo:uninstall -- --yes` deletes it in dependency order, re-checks, and lists what to remove by hand on GitHub and locally. It keeps the `LC_GATEWAY_KEY` workspace secret and the `user_score` feedback config, which other apps share.
 
-```bash
-python -m scripts.cleanup --full
-python -m scripts.setup         # recreates project, dataset, evaluators
-python -m scripts.generate_traces
-```
+## License
 
-Use this when you want Engine to see a completely fresh project for the next demo — for example when a new presenter takes over and you don't want them to inherit any pre-flagged issues.
+MIT. See [LICENSE](LICENSE).

@@ -1,0 +1,38 @@
+name: Reset
+
+# Starts Engine's part of the demo over: closes its fix PRs, replaces its board (which scans again),
+# and refreshes the experiments. Branches are untouched. Other DEs share this demo; tell them first.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "reset" to confirm'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: demo-state
+  cancel-in-progress: false
+
+jobs:
+  reset:
+    if: inputs.confirm == 'reset'
+    # Waits for a maintainer's approval.
+    environment: maintainers
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      LANGSMITH_WORKSPACE_ID: ${{ vars.LANGSMITH_WORKSPACE_ID }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f
+        with:
+          mode: firewall-free
+      - run: sfw pnpm install --frozen-lockfile
+      - run: mise run demo:reset -- --yes

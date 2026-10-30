@@ -1,0 +1,42 @@
+name: Trickle
+
+# A few conversations with production every few hours, so the demo always has recent traces,
+# feedback for the triage queue, and evidence for Engine's daily scan.
+on:
+  schedule:
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: trickle
+  cancel-in-progress: false
+
+jobs:
+  trickle:
+    # Skips forks that haven't run demo:install.
+    if: vars.LANGSMITH_WORKSPACE_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      LANGSMITH_WORKSPACE_ID: ${{ vars.LANGSMITH_WORKSPACE_ID }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f
+        with:
+          mode: firewall-free
+      - run: sfw pnpm install --frozen-lockfile
+      - run: mise run demo:trickle
+      # GitHub disables scheduled workflows after 60 days without repo activity.
+      - name: Keep the schedules on
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow enable trickle.yml -R "$GITHUB_REPOSITORY"
+          gh workflow enable health.yml -R "$GITHUB_REPOSITORY"

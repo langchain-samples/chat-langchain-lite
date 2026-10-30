@@ -1,0 +1,8 @@
+/* Macaw's styles.css already ships base styles and tokens; only add utilities for our own markup. */
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}

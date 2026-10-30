@@ -1,0 +1,31 @@
+[tasks.prepare]
+description = "Prepare a workspace: [--only <steps>] [--split demo] [--roles <roles>] [--skip-wait]"
+run = "node --env-file-if-exists=../agent/.env src/prepare.ts"
+
+[tasks.install]
+description = "Create both environments as GitHub-connected deployments, publish Pages, then prepare: [--redeploy] [--replace]"
+run = "node --env-file-if-exists=../agent/.env src/install.ts"
+
+[tasks.uninstall]
+description = "List everything the demo created in the workspace; --yes deletes it"
+run = "node --env-file-if-exists=../agent/.env src/uninstall.ts"
+
+[tasks.trickle]
+description = "Send a few conversations with feedback to production: [--count 4]"
+run = "node --env-file-if-exists=../agent/.env src/trickle.ts"
+
+[tasks.health]
+description = "Check the deployed demo end to end: [--github-issue]"
+run = "node --env-file-if-exists=../agent/.env src/check.ts"
+
+[tasks.reset]
+description = "Close Engine's fix PRs, replace its board and refresh the experiments; --yes does it"
+run = "node --env-file-if-exists=../agent/.env src/reset.ts"
+
+[tasks.check]
+description = "Format check, lint and typecheck"
+run = ["pnpm run fmt:check", "pnpm run lint", "pnpm run typecheck"]
+
+[tasks.test]
+description = "Unit tests"
+run = "pnpm run test"

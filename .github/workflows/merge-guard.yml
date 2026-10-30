@@ -1,0 +1,34 @@
+name: Merge guard
+
+on:
+  # pull_request gets a read-only token on PRs from forks, so their status could never be posted.
+  # Safe because this job never checks out or runs the PR's code.
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  statuses: write
+
+jobs:
+  merge-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hold Engine's fixes open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'Engine') }}
+        # Pending, never failure: Engine revises its fix whenever a check on its PR fails.
+        run: |
+          engine=$LABELED
+          case "$HEAD_REF" in langsmith-engine/* | issues-agent/*) engine=true ;; esac
+          [ "$AUTHOR" = "langsmith-engine[bot]" ] && engine=true
+          if [ "$engine" = true ]; then
+            state=pending description="Engine's demo fix: show its verdict, don't merge"
+          else
+            state=success description="Not an Engine fix"
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" \
+            -f state="$state" -f context=merge-guard -f description="$description" --silent

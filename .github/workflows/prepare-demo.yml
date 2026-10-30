@@ -1,0 +1,55 @@
+name: Prepare demo
+
+# Seeds the eval dataset, creates the hosted evaluators and triage queue, sends realistic traffic
+# to production, and pre-runs the experiments. Safe to re-run: finished work is skipped.
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Steps to run (comma-separated: readiness,evaluators,triage,traffic,experiments). Blank runs all."
+        required: false
+        default: ""
+      split:
+        description: "Limit experiments to one dataset split, such as demo. Blank uses the whole dataset."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-demo
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      LANGSMITH_WORKSPACE_ID: ${{ vars.LANGSMITH_WORKSPACE_ID }}
+      # Lets the readiness step compare main and development on a private fork.
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f
+        with:
+          mode: firewall-free
+      - run: sfw pnpm install --frozen-lockfile
+      - name: Prepare
+        env:
+          ONLY: ${{ inputs.only }}
+          SPLIT: ${{ inputs.split }}
+        run: |
+          args=()
+          [ -n "$ONLY" ] && args+=(--only "$ONLY")
+          [ -n "$SPLIT" ] && args+=(--split "$SPLIT")
+          mise run demo:prepare -- "${args[@]}"
+      - name: Upload the manifest
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: prepare-manifest
+          path: evals/.prepare/manifest.json
+          if-no-files-found: ignore
