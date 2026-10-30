@@ -162,7 +162,7 @@ langgraph-checkpoint==4.1.1
     #   langgraph-api
     #   langgraph-prebuilt
     #   langgraph-runtime-inmem
-langgraph-cli==0.4.30
+langgraph-cli==0.4.32.dev0
     # via chat-lc-lite-agent
 langgraph-prebuilt==1.1.0
     # via langgraph
