@@ -10,7 +10,7 @@ export const MODEL_CHOICES = ["claude-haiku-5-5", "gpt-6-luna"] as const;
 export type ModelChoice = (typeof MODEL_CHOICES)[number];
 export const DEFAULT_MODEL: ModelChoice = "claude-haiku-5-5";
 
-const MAX_OUTPUT_TOKENS = 900;
+const MAX_OUTPUT_TOKENS = 4096;
 
 export function chooseModel(value: unknown): ModelChoice {
   return MODEL_CHOICES.find((choice) => choice === value) ?? DEFAULT_MODEL;
