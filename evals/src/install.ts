@@ -46,6 +46,15 @@ interface DeployOptions {
   readonly replace: boolean;
 }
 
+function prepare(steps: string, retry: string) {
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL("prepare.ts", import.meta.url)), "--only", steps],
+    { stdio: "inherit" },
+  );
+  if (result.status !== 0) throw new Error(`prepare failed. It's safe to re-run: ${retry}`);
+}
+
 function gh(args: readonly string[], input?: string): string {
   return run("gh", args, input);
 }
@@ -293,20 +302,14 @@ async function main() {
   const { development, production } = deployed as Record<Environment, DeploymentRecord>;
   await hostApi.put(`/v2/deployments/${development.id}/preview-builds/config`, PREVIEW_CONFIG);
   log(`PRs into development labeled "${PREVIEW_CONFIG.trigger_label}" get a preview deployment`);
-  await ensureBoard(api, { repo, production, development }, log);
 
   // Variable changes don't rebuild Pages, so always publish.
   await dispatchAndWait(repo, "pages.yml", "main");
 
-  const prepared = spawnSync(
-    process.execPath,
-    [fileURLToPath(new URL("prepare.ts", import.meta.url))],
-    {
-      stdio: "inherit",
-    },
-  );
-  if (prepared.status !== 0)
-    throw new Error("prepare failed. It's safe to re-run: mise run demo:prepare");
+  // Traffic before the board: creating it starts a scan, which finds nothing without production traces.
+  prepare("readiness,evaluators,triage,traffic", "mise run demo:install");
+  await ensureBoard(api, { repo, production, development }, log);
+  prepare("experiments", "mise run demo:prepare");
 
   const site = (JSON.parse(gh(["api", `repos/${repo}/pages`])) as { html_url: string }).html_url;
   log(`done. The chat app is at ${site}`);
