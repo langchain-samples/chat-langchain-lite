@@ -9,7 +9,7 @@ export const ONLINE_FILTER = 'and(eq(is_root, true), neq(metadata_key, "ls_exper
 // Adding an assertions example from an annotation queue auto-creates a rule unless one with this
 // exact display name already exists (smith-frontend ensureAssertionsRule.ts).
 export const ASSERTIONS_RULE_NAME = "Assertions (auto-attached)";
-const TONE_RULE_NAME = "professional_tone";
+export const TONE_RULE_NAME = "professional_tone";
 const CITES_RULE_NAME = "cites_retrieved_docs";
 const TRAJECTORY_RULE_NAME = "trajectory_accuracy";
 

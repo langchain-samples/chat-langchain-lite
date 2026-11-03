@@ -15,6 +15,7 @@ import {
   findGithubSource,
   mergeSecrets,
   PREVIEW_CONFIG,
+  withoutGatewayKey,
   waitUntilDeployed,
   type DeploymentRecord,
   type GithubSource,
@@ -112,7 +113,7 @@ async function ensureDeployment(
   if (existing?.source === "github") {
     // The list endpoint omits secrets.
     const current = await hostApi.get<DeploymentRecord>(`/v2/deployments/${existing.id}`);
-    const secrets = mergeSecrets(current.secrets ?? [], options.secrets);
+    const secrets = mergeSecrets(current.secrets ?? [], withoutGatewayKey(options.secrets));
     if (secrets) {
       await hostApi.patch(`/v2/deployments/${existing.id}`, { secrets });
       log(`${environment}: updated ${existing.name}'s secrets, which rebuilds it`);
@@ -219,11 +220,6 @@ async function main() {
   gh(["auth", "status"]);
   log(`fork ${repo}, workspace ${config.workspaceId}`);
 
-  const workspaceSecrets = await api.get<{ key: string }[]>("/workspaces/current/secrets");
-  if (!workspaceSecrets.some((secret) => secret.key === "LC_GATEWAY_KEY"))
-    throw new Error(
-      "The workspace has no LC_GATEWAY_KEY secret, which the tone evaluators need. Add it under Settings → Secrets in LangSmith.",
-    );
   for (const branch of Object.values(ENVIRONMENT_BRANCHES)) {
     try {
       gh(["api", `repos/${repo}/branches/${branch}`, "--silent"]);

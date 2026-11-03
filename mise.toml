@@ -49,6 +49,10 @@ run = "mise run //evals:trickle"
 description = "Check the deployed demo end to end, as the Health workflow does"
 run = "mise run //evals:health"
 
+[tasks."demo:gateway-key"]
+description = "Copy LANGSMITH_GATEWAY_API_KEY into both deployments, as the Sync Gateway key workflow does"
+run = "mise run //evals:gateway-key"
+
 [tasks."demo:reset"]
 description = "Close Engine's fix PRs, replace its board and refresh the experiments; --yes does it"
 run = "mise run //evals:reset"

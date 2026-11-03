@@ -5,12 +5,14 @@ import { createApi, type Api } from "./api.ts";
 import { readConfig } from "./config.ts";
 import { findAgentDeployment, PREVIEW_CONFIG, revisionState } from "./deployments.ts";
 import { boardProblems, findBoard } from "./engine.ts";
+import { TONE_RULE_NAME } from "./evaluators.ts";
 import { originRepo, run } from "./github.ts";
 import {
   check,
   describeSpend,
   HEALTH_LABEL,
   issueAction,
+  judgeProblem,
   renderReport,
   SCHEDULED_WORKFLOWS,
   spendProblems,
@@ -85,6 +87,19 @@ async function engineCheck(api: Api, hostApi: Api, repo: string): Promise<string
   problems.push(...spendProblems(spend));
   if (problems.length > 0) throw new Error(`${problems.join("; ")}. ${describeSpend(spend)}`);
   return `scanning and verifying fixes; ${describeSpend(spend)}`;
+}
+
+async function judgeCheck(api: Api, hostApi: Api): Promise<string> {
+  const production = await findAgentDeployment(hostApi, "production");
+  if (!production?.tracer_session_id) throw new Error("production isn't deployed");
+  const [latest] = await api.get<{ created_at: string }[]>("/feedback", {
+    session: production.tracer_session_id,
+    key: TONE_RULE_NAME,
+    limit: 1,
+  });
+  const problem = judgeProblem(latest?.created_at ?? null, new Date());
+  if (problem) throw new Error(`${TONE_RULE_NAME} ${problem}; check the LC_GATEWAY_KEY secret`);
+  return `${TONE_RULE_NAME} scored a production trace at ${latest?.created_at}`;
 }
 
 async function previewCheck(hostApi: Api): Promise<string> {
@@ -208,12 +223,7 @@ async function main() {
     );
   }
   results.push(
-    await check("Gateway key", async () => {
-      const secrets = await api.get<{ key: string }[]>("/workspaces/current/secrets");
-      if (!secrets.some((secret) => secret.key === "LC_GATEWAY_KEY"))
-        throw new Error("the workspace has no LC_GATEWAY_KEY secret, so the tone judges fail");
-      return "LC_GATEWAY_KEY is set";
-    }),
+    await check("Tone judge", () => judgeCheck(api, hostApi)),
     await check("Engine", () => engineCheck(api, hostApi, repo)),
     await check("Previews", () => previewCheck(hostApi)),
     await check("Pages", () => pagesCheck(repo)),

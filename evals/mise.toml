@@ -18,6 +18,10 @@ run = "node --env-file-if-exists=../agent/.env src/trickle.ts"
 description = "Check the deployed demo end to end: [--github-issue]"
 run = "node --env-file-if-exists=../agent/.env src/check.ts"
 
+[tasks.gateway-key]
+description = "Copy LANGSMITH_GATEWAY_API_KEY into both deployments' secrets, rebuilding any that change"
+run = "node --env-file-if-exists=../agent/.env src/gateway-key.ts"
+
 [tasks.reset]
 description = "Close Engine's fix PRs, replace its board and refresh the experiments; --yes does it"
 run = "node --env-file-if-exists=../agent/.env src/reset.ts"

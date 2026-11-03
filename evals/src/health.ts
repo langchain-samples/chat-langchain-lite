@@ -42,6 +42,22 @@ export function spendProblems(spend: Spend): string[] {
   ];
 }
 
+// Trickle sends traffic every 4 hours, so a working judge scores something well within this.
+const JUDGE_MAX_AGE_HOURS = 12;
+
+/** Whether the tone judge, which calls the gateway, scored a production trace recently. */
+export function judgeProblem(latestScore: string | null, now: Date): string | null {
+  if (latestScore === null) return "has never scored a production trace";
+  // LangSmith returns UTC timestamps without an offset.
+  const scored = new Date(
+    /[zZ]|[+-]\d\d:\d\d$/.test(latestScore) ? latestScore : `${latestScore}Z`,
+  );
+  const hours = (now.getTime() - scored.getTime()) / 3_600_000;
+  return hours > JUDGE_MAX_AGE_HOURS
+    ? `last scored a production trace ${Math.round(hours)} hours ago`
+    : null;
+}
+
 export function describeSpend(spend: Spend): string {
   const limit = spend.projectLimitLcu === null ? "no limit" : `limit ${spend.projectLimitLcu}`;
   const org = spend.orgLimitLcu === null ? "" : ` of ${spend.orgLimitLcu}`;

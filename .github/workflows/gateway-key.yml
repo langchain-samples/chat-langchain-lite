@@ -1,0 +1,36 @@
+name: Sync Gateway key
+
+# Copies the LANGSMITH_GATEWAY_API_KEY repo secret into both deployments. Run it after the secret
+# changes. A changed key rebuilds the deployments, so tell the people demoing first.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # demo:check lists the scheduled workflows.
+  actions: read
+
+concurrency:
+  group: demo-state
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # Waits for a maintainer's approval.
+    environment: maintainers
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      LANGSMITH_WORKSPACE_ID: ${{ vars.LANGSMITH_WORKSPACE_ID }}
+      LANGSMITH_GATEWAY_API_KEY: ${{ secrets.LANGSMITH_GATEWAY_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f
+        with:
+          mode: firewall-free
+      - run: sfw pnpm install --frozen-lockfile
+      - run: mise run demo:gateway-key
+      - run: mise run demo:check

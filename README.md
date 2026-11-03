@@ -72,7 +72,7 @@ Then:
 3. Sends sample questions to `production`.
 4. Pre-runs three experiments: production, development, and development with gpt-6-luna.
 
-Use `--only <steps>`, `--split demo` and `--roles <roles>` to run part of it. It needs `LANGSMITH_API_KEY` (from `agent/.env` or a repo secret), `LANGSMITH_WORKSPACE_ID`, both environments deployed, `development` ahead of `main` (it warns otherwise), and the workspace secret `LC_GATEWAY_KEY` for the tone evaluator.
+Use `--only <steps>`, `--split demo` and `--roles <roles>` to run part of it. It needs `LANGSMITH_API_KEY` (from `agent/.env` or a repo secret), `LANGSMITH_WORKSPACE_ID`, both environments deployed, `development` ahead of `main` (it warns otherwise), and an `LC_GATEWAY_KEY` secret (organization or workspace) for the tone evaluators.
 
 ## How deploys work
 
@@ -85,7 +85,7 @@ One agent, `chat-langchain-lite`, per workspace, with two environments. Both are
 
 LangSmith builds whether or not CI passed, so `main` and `development` are protected: merging a pull request needs a passing `check`. Admins can still push directly.
 
-Each build syncs `agent/instructions.md` and `agent/skills/` to a Context Hub repo named after the deployment, with git winning. The Gateway key, the CORS allow-list and the sign-in settings are deployment secrets, which `mise run demo:install` sets.
+Each build syncs `agent/instructions.md` and `agent/skills/` to a Context Hub repo named after the deployment, with git winning. The Gateway key, the CORS allow-list and the sign-in settings are deployment secrets. `mise run demo:install` sets them, but sets the Gateway key only when it creates a deployment; after that, the Sync Gateway key workflow copies it from the `LANGSMITH_GATEWAY_API_KEY` repo secret.
 
 `development` runs one commit ahead of `main` on purpose, so the demo has a candidate to compare against production. To release it, open a pull request from `development` into `main` and merge it with a merge commit. A squash merge leaves `development` looking ahead with nothing new. After anything lands on `main` directly, merge `main` back into `development`.
 
@@ -138,16 +138,17 @@ Once installed, GitHub Actions keep the demo ready. They use the `LANGSMITH_API_
 | Workflow | When | What it does |
 |---|---|---|
 | Trickle | Every 4 hours | A few conversations with production, some with a follow-up and feedback, so there are always recent traces and evidence for Engine |
-| Health | Daily | Checks the deployments, sign-in, Pages, the Gateway key, Engine and the schedules. While anything fails, one issue labeled `demo-health` stays open |
+| Health | Daily | Checks the deployments, sign-in, Pages, the tone judge, Engine and the schedules. While anything fails, one issue labeled `demo-health` stays open |
 | Reset | By hand, after approval | Closes Engine's fix PRs, replaces its board, sends traffic and refreshes the experiments. `main` and `development` stay as they are |
 | Teardown | By hand, after approval | Runs `demo:uninstall --yes` |
 | Prepare demo | By hand | Runs `demo:prepare` |
+| Sync Gateway key | By hand, after approval | Copies the `LANGSMITH_GATEWAY_API_KEY` repo secret into both deployments, rebuilding any that change, then runs Health |
 
 Reset and Teardown take a typed confirmation and wait in the `maintainers` environment for approval. Other people may be mid-demo, so tell them first. To get Health's alerts in Slack, run `/github subscribe <owner>/<repo> issues +label:"demo-health"` in a channel.
 
 ## Uninstall
 
-`mise run demo:uninstall` lists everything the demo created in the workspace, with what each evaluator is attached to. `mise run demo:uninstall -- --yes` deletes it in dependency order, re-checks, and lists what to remove by hand on GitHub and locally. It deletes only evaluators the demo created, and keeps the `LC_GATEWAY_KEY` workspace secret and the `user_score` and `answer_ok` feedback configs, which other apps share.
+`mise run demo:uninstall` lists everything the demo created in the workspace, with what each evaluator is attached to. `mise run demo:uninstall -- --yes` deletes it in dependency order, re-checks, and lists what to remove by hand on GitHub and locally. It deletes only evaluators the demo created, and keeps the `LC_GATEWAY_KEY` secret and the `user_score` and `answer_ok` feedback configs, which other apps share.
 
 ## License
 

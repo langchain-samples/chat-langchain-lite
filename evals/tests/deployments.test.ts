@@ -9,6 +9,7 @@ import {
   mergeSecrets,
   revisionState,
   waitUntilDeployed,
+  withoutGatewayKey,
 } from "../src/deployments.ts";
 import { fakeApi } from "./fake-api.ts";
 
@@ -77,6 +78,16 @@ describe("mergeSecrets", () => {
       { name: "OAUTH_CLIENT_ID", value: "lsc_new" },
       { name: "ALLOWED_ORGANIZATION_ID", value: "org-1" },
     ]);
+  });
+});
+
+describe("withoutGatewayKey", () => {
+  it("leaves the Gateway key out, so re-running install keeps the one the workflow synced", () => {
+    const names = withoutGatewayKey(
+      deploymentSecrets({ gatewayKey: "personal", cors: "", signIn }),
+    ).map((secret) => secret.name);
+    expect(names).not.toContain("LANGSMITH_GATEWAY_API_KEY");
+    expect(names).toContain("ALLOWED_ORGANIZATION_ID");
   });
 });
 

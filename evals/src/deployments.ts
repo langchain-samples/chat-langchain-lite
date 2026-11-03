@@ -40,6 +40,8 @@ export function corsOrigins(owner: string): string {
   return `https://smith.langchain.com,https://${owner.toLowerCase()}.github.io,http://localhost:5173`;
 }
 
+export const GATEWAY_KEY_SECRET = "LANGSMITH_GATEWAY_API_KEY";
+
 export interface Secret {
   readonly name: string;
   readonly value: string;
@@ -58,7 +60,7 @@ export function deploymentSecrets(options: {
   readonly signIn: SignInSettings;
 }): Secret[] {
   return [
-    { name: "LANGSMITH_GATEWAY_API_KEY", value: options.gatewayKey },
+    { name: GATEWAY_KEY_SECRET, value: options.gatewayKey },
     { name: "MDA_CORS_ORIGINS", value: options.cors },
     // mda deploy derives this for the Agent Server's own routes; GitHub builds don't, so set it here.
     { name: "CORS_ALLOW_ORIGINS", value: options.cors },
@@ -67,6 +69,11 @@ export function deploymentSecrets(options: {
       ? [{ name: "OAUTH_CLIENT_ID", value: options.signIn.clientId }]
       : []),
   ];
+}
+
+/** The Sync Gateway key workflow owns the key once a deployment exists; install sets it only on create. */
+export function withoutGatewayKey(secrets: readonly Secret[]): Secret[] {
+  return secrets.filter((secret) => secret.name !== GATEWAY_KEY_SECRET);
 }
 
 /**

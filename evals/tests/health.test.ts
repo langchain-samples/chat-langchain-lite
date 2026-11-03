@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { check, issueAction, renderReport, spendProblems } from "../src/health.ts";
+import { check, issueAction, judgeProblem, renderReport, spendProblems } from "../src/health.ts";
 
 const pass = { name: "Pages", ok: true, detail: "up" };
 const fail = { name: "Engine", ok: false, detail: "scanning is paused" };
@@ -54,5 +54,24 @@ describe("spendProblems", () => {
     expect(
       spendProblems({ projectLcu: 900, projectLimitLcu: null, orgLcu: 9000, orgLimitLcu: null }),
     ).toEqual([]);
+  });
+});
+
+describe("judgeProblem", () => {
+  const now = new Date("2026-11-03T18:00:00Z");
+
+  it("passes while the judge scored within the last 12 hours", () => {
+    expect(judgeProblem("2026-11-03T17:44:57.588290", now)).toBeNull();
+    expect(judgeProblem("2026-11-03T07:00:00Z", now)).toBeNull();
+  });
+
+  it("reads LangSmith's offset-less timestamps as UTC", () => {
+    expect(judgeProblem("2026-11-03T05:00:00", now)).toBe(
+      "last scored a production trace 13 hours ago",
+    );
+  });
+
+  it("fails when the judge never scored", () => {
+    expect(judgeProblem(null, now)).toBe("has never scored a production trace");
   });
 });
