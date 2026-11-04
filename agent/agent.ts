@@ -1,5 +1,5 @@
 import { registerHarnessProfile } from "deepagents";
-import { modelCallLimitMiddleware } from "langchain";
+import { modelCallLimitMiddleware, toolErrorMiddleware } from "langchain";
 import { defineDeepAgent, type ManagedServerRuntime } from "managed-deepagents";
 import { z } from "zod";
 
@@ -15,6 +15,15 @@ for (const provider of ["anthropic", "openai"]) {
 // Lets an eval run pick the model. Real users never set it, so they always get the default.
 export const contextSchema = z.object({ eval_model: z.enum(MODEL_CHOICES).optional() });
 
+// Behind middleware that wraps tool calls, LangChain rethrows tool errors, so one timed-out docs
+// search would end the run and discard the searches that worked. The model gets an error result
+// instead; interrupts still propagate.
+export const toolErrors = toolErrorMiddleware({
+  onError: (error, request) =>
+    `${request.toolCall.name} failed (${error instanceof Error ? error.name : "Error"}). ` +
+    "Answer from your other results and tell the user this lookup failed.",
+});
+
 // A factory, so the model is chosen per run and summarization inherits it too.
 export function agent(runtime: ManagedServerRuntime) {
   return defineDeepAgent({
@@ -25,6 +34,7 @@ export function agent(runtime: ManagedServerRuntime) {
     middleware: [
       accessMiddleware(accessPolicy(process.env)),
       modelCallLimitMiddleware({ runLimit: 25, exitBehavior: "end" }),
+      toolErrors,
     ],
   });
 }
