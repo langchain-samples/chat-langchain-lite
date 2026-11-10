@@ -19,7 +19,8 @@ function performEval(run, _example) {
   const normalize = (path) =>
     path
       .split("#")[0]
-      .replace(/[.,;:!?]+$/, "")
+      .replace(/(\.mdx?):\d+(?::.*)?$/, "$1")
+      .replace(/[.,;:!?*_]+$/, "")
       .replace(/\.mdx?$/, "")
       .replace(/\/+$/, "");
   const collect = (source, pattern) =>
