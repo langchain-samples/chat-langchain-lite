@@ -19,7 +19,7 @@
     "@langchain/mcp-adapters": "2.0.1",
     "@langchain/openai": "1.8.0",
     "deepagents": "1.16.2",
-    "hono": "4.13.14",
+    "hono": "4.13.16",
     "jose": "6.2.14",
     "langchain": "1.6.0",
     "langsmith": "0.8.12",
