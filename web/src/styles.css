@@ -4,7 +4,11 @@
 @config "../tailwind.config.cjs";
 
 html,
-body,
-#root {
+body {
   height: 100%;
+}
+
+/* Not 100%: on mobile that can include the area under the browser toolbar, hiding the composer. */
+#root {
+  height: 100dvh;
 }
