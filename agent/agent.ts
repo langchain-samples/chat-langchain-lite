@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { accessMiddleware, accessPolicy } from "./access.js";
 import { chooseModel, createModel, MODEL_CHOICES } from "./model.js";
+import { toolAliasMiddleware } from "./tool-aliases.js";
 
 // Docs searches must stay in the root trace, where evaluators read them; the built-in
 // general-purpose subagent would run them out of sight.
@@ -25,6 +26,7 @@ export function agent(runtime: ManagedServerRuntime) {
     middleware: [
       accessMiddleware(accessPolicy(process.env)),
       modelCallLimitMiddleware({ runLimit: 25, exitBehavior: "end" }),
+      toolAliasMiddleware(),
     ],
   });
 }
