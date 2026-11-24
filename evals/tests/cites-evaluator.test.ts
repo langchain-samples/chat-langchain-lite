@@ -61,4 +61,33 @@ describe("cites_retrieved_docs", () => {
     const cited = answer("Docs: https://docs.langchain.com/oss/python/langgraph/interrupts");
     expect(scores([fs, cited])).toEqual({ searched_docs: 1, cites_retrieved_docs: 1 });
   });
+
+  it("accepts pages the filesystem tool returned as rg -n matches", () => {
+    const fs = lc("ToolMessage", {
+      name: "langchainDocs_query_docs_filesystem_docs_by_lang_chain",
+      content: "/langsmith/foo.mdx:48:export X\n/langsmith/bar.md:7:",
+    });
+    const cited = answer(
+      "See https://docs.langchain.com/langsmith/foo and https://docs.langchain.com/langsmith/bar",
+    );
+    expect(scores([fs, cited])).toEqual({ searched_docs: 1, cites_retrieved_docs: 1 });
+  });
+
+  it("accepts links wrapped in Markdown emphasis", () => {
+    const fs = lc("ToolMessage", {
+      name: "langchainDocs_query_docs_filesystem_docs_by_lang_chain",
+      content: "/langsmith/foo.mdx",
+    });
+    const cited = answer("**https://docs.langchain.com/langsmith/foo**");
+    expect(scores([fs, cited])).toEqual({ searched_docs: 1, cites_retrieved_docs: 1 });
+  });
+
+  it("still fails an rg -n match's page the search never returned", () => {
+    const fs = lc("ToolMessage", {
+      name: "langchainDocs_query_docs_filesystem_docs_by_lang_chain",
+      content: "/langsmith/foo.mdx:48:export X",
+    });
+    const cited = answer("**https://docs.langchain.com/langsmith/other**");
+    expect(scores([fs, cited])).toEqual({ searched_docs: 1, cites_retrieved_docs: 0 });
+  });
 });
