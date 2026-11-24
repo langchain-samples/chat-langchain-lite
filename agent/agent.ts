@@ -7,9 +7,22 @@ import { accessMiddleware, accessPolicy } from "./access.js";
 import { chooseModel, createModel, MODEL_CHOICES } from "./model.js";
 
 // Docs searches must stay in the root trace, where evaluators read them; the built-in
-// general-purpose subagent would run them out of sight.
+// general-purpose subagent would run them out of sight. managed-deepagents also adds an async
+// general-purpose subagent that ignores `enabled: false`, so its tools and the then-empty `task`
+// tool are excluded too.
+const SUBAGENT_TOOLS = [
+  "task",
+  "start_async_task",
+  "check_async_task",
+  "update_async_task",
+  "cancel_async_task",
+  "list_async_tasks",
+];
 for (const provider of ["anthropic", "openai"]) {
-  registerHarnessProfile(provider, { generalPurposeSubagent: { enabled: false } });
+  registerHarnessProfile(provider, {
+    generalPurposeSubagent: { enabled: false },
+    excludedTools: SUBAGENT_TOOLS,
+  });
 }
 
 // Lets an eval run pick the model. Real users never set it, so they always get the default.
