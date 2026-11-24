@@ -37,6 +37,10 @@ describe("modelOptions", () => {
   it("disables extended thinking", () => {
     expect(options.thinking).toEqual({ type: "disabled" });
   });
+
+  it("leaves room for a docs answer with explanation, code and links", () => {
+    expect(options.maxTokens).toBe(4096);
+  });
 });
 
 describe("chooseModel", () => {
