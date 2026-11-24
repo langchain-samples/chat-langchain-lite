@@ -24,10 +24,17 @@ function languageOf(className: string | undefined) {
   return (tag && CODE_LANGUAGES[tag as keyof typeof CODE_LANGUAGES]) || "plaintext";
 }
 
+const DOCS_ORIGIN = "https://docs.langchain.com";
+
+// Docs search results link pages by root-relative path, which would otherwise resolve against this app.
+function docsHref(href: string | undefined) {
+  return href?.startsWith("/") && !href.startsWith("//") ? `${DOCS_ORIGIN}${href}` : href;
+}
+
 const components: Components = {
   a: ({ href, children }) => (
     <a
-      href={href}
+      href={docsHref(href)}
       target="_blank"
       rel="noreferrer"
       className="text-link underline hover:text-link-hover"
