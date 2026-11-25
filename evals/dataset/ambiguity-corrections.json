@@ -1,0 +1,37 @@
+[
+  {
+    "id": "memory-silent-pick",
+    "question": "how do I add memory to my agent",
+    "answer": "Give the agent a checkpointer when you create it, then pass the same thread_id on every call. The agent saves each turn to the checkpointer and reloads the conversation the next time that thread_id comes in. For anything beyond local testing, swap the in-memory checkpointer for a database-backed one such as Postgres.",
+    "passes": false,
+    "explanation": "\"Memory\" could mean short-term memory within a conversation (a checkpointer) or long-term memory across conversations (a store), and the user didn't say which. The answer silently picked short-term memory without saying so or mentioning the other reading, so it fails."
+  },
+  {
+    "id": "tool-stated-reading",
+    "question": "how do I give my agent a tool",
+    "answer": "I'll assume you're using LangChain's create_agent in Python; tell me if you're on JavaScript or Deep Agents and I'll adjust. Write a plain function with a docstring, mark it with the tool decorator, and pass it in the agent's tools list. The model reads the function's name and docstring to decide when to call it.",
+    "passes": true,
+    "explanation": "The question doesn't name a product or a language. The answer says up front which reading it chose and invites a correction, which handles the ambiguity without a clarifying question, so it passes."
+  },
+  {
+    "id": "streaming-clear",
+    "question": "How do I stream tokens from createAgent in TypeScript?",
+    "answer": "Call the agent's stream method with the stream mode set to messages. Each chunk is a message token plus metadata about the step that produced it, so you can render tokens as they arrive and tell model output apart from tool calls.",
+    "passes": true,
+    "explanation": "The user named the API and the language, so the question is clear. The answer answers it directly, which is correct; a clarifying question here would have failed."
+  },
+  {
+    "id": "recursion-limit-needless-question",
+    "question": "How do I set the recursion limit on a LangGraph graph in Python?",
+    "answer": "Happy to help! Which product are you using: LangChain, LangGraph or Deep Agents? And are you working in Python or JavaScript?",
+    "passes": false,
+    "explanation": "The user already said LangGraph and Python, so the question is clear. Asking again for details the user gave adds a round trip for nothing, so it fails."
+  },
+  {
+    "id": "follow-up-continues",
+    "question": "Can you show a complete example?",
+    "answer": "Sure. Here is the whole flow from start to finish: create the checkpointer, compile the graph with it, then invoke the graph twice with the same thread_id. The second call sees the messages from the first, which is how the conversation picks up where it left off.",
+    "passes": true,
+    "explanation": "This is a follow-up that refers to an earlier turn you can't see. Treat follow-ups as clear and don't penalize an answer that continues the conversation, so it passes."
+  }
+]

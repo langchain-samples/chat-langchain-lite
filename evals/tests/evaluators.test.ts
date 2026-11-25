@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AMBIGUITY_RULE_NAME,
+  ambiguityRule,
   ANSWER_PATH,
   ASSERTIONS_RULE_NAME,
   assertionsRule,
   ensureRule,
   ONLINE_FILTER,
+  QUESTION_PATH,
   sharedRule,
   sharedTrajectoryRule,
   TONE_LLM_RULE_NAME,
@@ -78,6 +81,7 @@ describe("ensureRule", () => {
       name: "x",
       id: "r-new",
       evaluatorId: "ev-new",
+      correctionsDatasetId: null,
       status: "created",
     });
   });
@@ -88,9 +92,60 @@ describe("ensureRule", () => {
       name: "x",
       id: "r-1",
       evaluatorId: "ev-1",
+      correctionsDatasetId: null,
       status: "exists",
     });
     expect(api.calls.some((call) => call.method !== "GET")).toBe(false);
+  });
+
+  it("returns the corrections dataset the backend created for the rule", async () => {
+    const api = fakeApi((call) =>
+      call.method === "GET"
+        ? []
+        : { id: "r-new", evaluator_id: "ev-new", corrections_dataset_id: "cd-1" },
+    );
+    const result = await ensureRule(api, target, { display_name: "x" });
+    expect(result.correctionsDatasetId).toBe("cd-1");
+  });
+});
+
+describe("ambiguityRule", () => {
+  const rule = ambiguityRule("s-prod", judge) as any;
+  const structured = rule.evaluators[0].structured;
+
+  it("scores production traces with few-shot examples from its corrections dataset", () => {
+    expect(rule).toMatchObject({
+      display_name: AMBIGUITY_RULE_NAME,
+      session_id: "s-prod",
+      filter: ONLINE_FILTER,
+      use_corrections_dataset: true,
+      num_few_shot_examples: 5,
+      is_tracing_disabled: false,
+    });
+    expect(rule.group_by).toBeUndefined();
+  });
+
+  it("has exactly one score key besides comment, so the backend creates the corrections dataset", () => {
+    const keys = Object.keys(structured.schema.properties).filter((key) => key !== "comment");
+    expect(keys).toEqual([AMBIGUITY_RULE_NAME]);
+    expect(structured.schema.properties[AMBIGUITY_RULE_NAME].type).toBe("boolean");
+  });
+
+  it("renders each example's variables, explanation and score inside the few-shot section", () => {
+    const prompt: string = structured.prompt[0][1];
+    const section = prompt.match(/{{#examples_few_shot}}([\s\S]*){{\/examples_few_shot}}/)?.[1];
+    expect(section).toBeDefined();
+    for (const variable of [
+      ...Object.keys(structured.variable_mapping),
+      "few_shot_explanation",
+      AMBIGUITY_RULE_NAME,
+    ])
+      expect(section).toContain(`{{${variable}}}`);
+    expect(structured.template_format).toBe("mustache");
+  });
+
+  it("judges the latest question against the final answer", () => {
+    expect(structured.variable_mapping).toEqual({ question: QUESTION_PATH, answer: ANSWER_PATH });
   });
 });
 
@@ -99,6 +154,7 @@ describe("sharedRule", () => {
     name: "professional_tone",
     id: "r-1",
     evaluatorId: "ev-1",
+    correctionsDatasetId: null,
     status: "exists",
   } as const;
 

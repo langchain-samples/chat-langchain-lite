@@ -14,8 +14,11 @@ import { createApi } from "./api.ts";
 import { pushApp } from "./app.ts";
 import { developmentGap, parseGitHubRepo } from "./branches.ts";
 import { readConfig, type Config } from "./config.ts";
+import { seedCorrections, type CorrectionSeed } from "./corrections.ts";
 import { seedDataset, type SeedExample } from "./dataset.ts";
 import {
+  AMBIGUITY_RULE_NAME,
+  ambiguityRule,
   assertionsRule,
   citesRule,
   ensureRule,
@@ -188,8 +191,27 @@ async function main() {
         sharedTrajectoryRule(development.tracerSessionId, trajectory),
       ),
     );
+    const ambiguity = await ensureRule(
+      api,
+      { kind: "session", sessionId: production.tracerSessionId },
+      ambiguityRule(production.tracerSessionId, judge),
+    );
+    results.push(ambiguity);
     for (const result of results) log(`evaluator ${result.name}: ${result.status}`);
     manifest.evaluators = results;
+
+    if (!ambiguity.correctionsDatasetId)
+      throw new Error(`${ambiguity.name} has no corrections dataset to seed.`);
+    const corrections = await seedCorrections(
+      api,
+      ambiguity.correctionsDatasetId,
+      await readJson<CorrectionSeed[]>("dataset/ambiguity-corrections.json"),
+      AMBIGUITY_RULE_NAME,
+    );
+    log(
+      `${ambiguity.name} corrections: ${corrections.created} seeded, ${corrections.unchanged} already there`,
+    );
+    manifest.corrections = corrections;
   }
 
   if (steps.has("triage")) {

@@ -77,6 +77,7 @@ export const TONE_QUESTION =
   "Does the assistant's final answer read like professional technical documentation, with no emoji, no slang or hype, and product names written in full?";
 
 export const TONE_LLM_RULE_NAME = "professional_tone_llm";
+export const AMBIGUITY_RULE_NAME = "handles_ambiguity";
 
 /** Every evaluator this demo creates. Teardown deletes only these, never one someone else attached. */
 export const DEMO_EVALUATOR_NAMES: readonly string[] = [
@@ -85,7 +86,76 @@ export const DEMO_EVALUATOR_NAMES: readonly string[] = [
   TONE_LLM_RULE_NAME,
   CITES_RULE_NAME,
   TRAJECTORY_RULE_NAME,
+  AMBIGUITY_RULE_NAME,
 ];
+
+// A trace's input holds only the turn's new message; earlier turns live in the thread's checkpoint.
+export const QUESTION_PATH = "input.messages[-1].content";
+
+// Silent on follow-ups and other edge cases on purpose: the seeded corrections teach those.
+// The backend passes examples only to a section named examples_few_shot.
+export const AMBIGUITY_PROMPT = `You are reviewing an answer from a documentation assistant for LangChain, LangGraph, LangSmith and Deep Agents.
+
+Decide whether the answer handled ambiguity in the user's question correctly.
+
+A question is ambiguous when the right answer depends on something the user didn't say: which product, which language (Python or JavaScript), or which kind of memory (short-term or long-term).
+
+- Ambiguous question: pass if the answer asks one short clarifying question, or says which reading it's answering and answers that.
+- Clear question: pass if the answer answers directly. An unneeded clarifying question fails.
+- Ambiguous question answered for one reading without saying so: fail.
+
+Judge only how the answer handled ambiguity, not whether it is correct, complete or well written.
+
+Use the examples below for reference:
+{{#examples_few_shot}}
+<example>
+<question>
+{{question}}
+</question>
+
+<answer>
+{{answer}}
+</answer>
+
+<extract>
+<comment>
+{{few_shot_explanation}}
+</comment>
+
+<${AMBIGUITY_RULE_NAME}>
+{{${AMBIGUITY_RULE_NAME}}}
+</${AMBIGUITY_RULE_NAME}>
+</extract>
+</example>
+{{/examples_few_shot}}
+
+<question>
+{{question}}
+</question>
+
+<answer>
+{{answer}}
+</answer>`;
+
+// The backend creates the corrections dataset only for a schema with exactly one key besides comment.
+export const AMBIGUITY_SCHEMA = {
+  title: "Handles_Ambiguity_Score",
+  type: "object",
+  description: "An evaluation of whether the answer handled ambiguity in the question correctly.",
+  properties: {
+    comment: {
+      type: "string",
+      description:
+        "Reasoning for the score: whether the question was ambiguous, and how the answer handled it.",
+    },
+    [AMBIGUITY_RULE_NAME]: {
+      type: "boolean",
+      description: "TRUE if the answer handled ambiguity correctly. FALSE otherwise.",
+    },
+  },
+  required: ["comment", AMBIGUITY_RULE_NAME],
+  strict: true,
+};
 
 // Deliberately generic: the demo sharpens it in the Evaluator Playground against human labels.
 export const TONE_LLM_PROMPT = `You are reviewing an answer from a documentation assistant for LangChain, LangGraph, LangSmith and Deep Agents.
@@ -272,6 +342,32 @@ export function toneLlmRule(datasetId: string, gatewaySecret = "LC_GATEWAY_KEY")
   };
 }
 
+/** Few-shot from its corrections dataset, which prepare seeds. Runs on production traces only. */
+export function ambiguityRule(sessionId: string, judge: JudgeModel): RuleBody {
+  return {
+    display_name: AMBIGUITY_RULE_NAME,
+    session_id: sessionId,
+    filter: ONLINE_FILTER,
+    sampling_rate: 1,
+    is_enabled: true,
+    is_tracing_disabled: false,
+    use_corrections_dataset: true,
+    num_few_shot_examples: 5,
+    evaluators: [
+      {
+        structured: {
+          model: judge.model,
+          playground_settings_id: judge.id,
+          prompt: [["human", AMBIGUITY_PROMPT]],
+          schema: AMBIGUITY_SCHEMA,
+          template_format: "mustache",
+          variable_mapping: { question: QUESTION_PATH, answer: ANSWER_PATH },
+        },
+      },
+    ],
+  };
+}
+
 export function citesRule(datasetId: string, code: string): RuleBody {
   return {
     display_name: CITES_RULE_NAME,
@@ -327,6 +423,7 @@ export type EnsureResult = {
   readonly name: string;
   readonly id: string;
   readonly evaluatorId: string | null;
+  readonly correctionsDatasetId: string | null;
   readonly status: "created" | "exists";
 };
 
@@ -334,6 +431,7 @@ interface RuleRecord {
   readonly id: string;
   readonly display_name: string;
   readonly evaluator_id?: string | null;
+  readonly corrections_dataset_id?: string | null;
 }
 
 /**
@@ -354,6 +452,7 @@ export async function ensureRule(
     name: body.display_name,
     id: rule.id,
     evaluatorId: rule.evaluator_id ?? null,
+    correctionsDatasetId: rule.corrections_dataset_id ?? null,
     status: match ? "exists" : "created",
   };
 }
