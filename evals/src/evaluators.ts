@@ -1,7 +1,11 @@
 import type { Api } from "./api.ts";
 
-// Resolves for Haiku's content blocks and gpt-6-luna's plain-string content alike.
+// Resolves for Haiku's content blocks and gpt-6-luna's plain-string content alike. Root outputs
+// serialize messages either as LangChain constructors (content under kwargs) or flat (top-level
+// content, e.g. after a tool result is evicted to /large_tool_results/), so prompts render both
+// paths side by side and only the populated one shows.
 export const ANSWER_PATH = "output.messages[-1].kwargs.content";
+export const ANSWER_FLAT_PATH = "output.messages[-1].content";
 
 // Keeps Studio and prepare-step experiment copies away from online evaluators.
 export const ONLINE_FILTER = 'and(eq(is_root, true), neq(metadata_key, "ls_experiment_id"))';
@@ -45,7 +49,7 @@ export const ASSERTIONS_PROMPT = `You are an expert data labeler evaluating whet
 </input>
 
 <output>
-{{outputs}}
+{{outputs}}{{outputs_flat}}
 </output>
 
 <assertions>
@@ -93,7 +97,7 @@ export const TONE_LLM_PROMPT = `You are reviewing an answer from a documentation
 Decide whether the answer's tone is professional: clear, courteous and suited to technical documentation that developers rely on.
 
 <answer>
-{{answer}}
+{{answer}}{{answer_flat}}
 </answer>`;
 
 // The alignment queue needs exactly one boolean feedback key.
@@ -195,6 +199,7 @@ export function assertionsRule(datasetId: string, judge: JudgeModel): RuleBody {
           variable_mapping: {
             inputs: "input.messages",
             outputs: ANSWER_PATH,
+            outputs_flat: ANSWER_FLAT_PATH,
             assertions: "referenceOutput.assertions",
           },
         },
@@ -224,9 +229,9 @@ export function toneRule(datasetId: string, gatewaySecret = "LC_GATEWAY_KEY"): R
               questions: { professional_tone: { type: "noul", instructions: TONE_QUESTION } },
             },
           },
-          prompt: [["human", "<answer>\n{{answer}}\n</answer>"]],
+          prompt: [["human", "<answer>\n{{answer}}{{answer_flat}}\n</answer>"]],
           template_format: "mustache",
-          variable_mapping: { answer: ANSWER_PATH },
+          variable_mapping: { answer: ANSWER_PATH, answer_flat: ANSWER_FLAT_PATH },
         },
       },
     ],
@@ -265,7 +270,7 @@ export function toneLlmRule(datasetId: string, gatewaySecret = "LC_GATEWAY_KEY")
           prompt: [["human", TONE_LLM_PROMPT]],
           schema: TONE_LLM_SCHEMA,
           template_format: "mustache",
-          variable_mapping: { answer: ANSWER_PATH },
+          variable_mapping: { answer: ANSWER_PATH, answer_flat: ANSWER_FLAT_PATH },
         },
       },
     ],

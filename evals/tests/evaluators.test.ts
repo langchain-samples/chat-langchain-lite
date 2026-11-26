@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANSWER_FLAT_PATH,
   ANSWER_PATH,
   ASSERTIONS_RULE_NAME,
   assertionsRule,
@@ -54,8 +55,68 @@ describe("toneLlmRule", () => {
       type: "secret",
       id: ["LC_GATEWAY_KEY"],
     });
-    expect(structured.variable_mapping).toEqual({ answer: ANSWER_PATH });
+    expect(structured.variable_mapping).toEqual({
+      answer: ANSWER_PATH,
+      answer_flat: ANSWER_FLAT_PATH,
+    });
   });
+});
+
+/** Resolves a rule's variable mapping against a run and fills its mustache prompt. */
+function renderPrompt(rule: any, run: Record<string, unknown>): string {
+  const { prompt, variable_mapping } = rule.evaluators[0].structured;
+  const resolve = (path: string) =>
+    path.split(/\.|(?=\[)/).reduce<any>((value, key) => {
+      if (value == null) return undefined;
+      const index = /^\[(-?\d+)\]$/.exec(key);
+      return index ? value.at(Number(index[1])) : value[key];
+    }, run);
+  return prompt[0][1].replace(/\{\{(\w+)\}\}/g, (_: string, name: string) => {
+    const value = resolve(variable_mapping[name]);
+    return value === undefined ? "" : typeof value === "string" ? value : JSON.stringify(value);
+  });
+}
+
+describe("answer-reading rules", () => {
+  const answer = [{ type: "text", text: "Use create_agent with a checkpointer." }];
+  const constructorRun = {
+    input: { messages: [] },
+    output: {
+      messages: [{ lc: 1, type: "constructor", id: ["AIMessage"], kwargs: { content: answer } }],
+    },
+    referenceOutput: { assertions: [] },
+  };
+  const flatRun = {
+    input: { messages: [] },
+    output: { messages: [{ type: "ai", content: answer, lc_kwargs: { content: answer } }] },
+    referenceOutput: { assertions: [] },
+  };
+  const rules = {
+    assertions: [assertionsRule("ds-1", judge), "outputs"],
+    professional_tone: [toneRule("ds-1"), "answer"],
+    professional_tone_llm: [toneLlmRule("ds-1"), "answer"],
+  } as const;
+
+  for (const [name, [rule, variable]] of Object.entries(rules)) {
+    it(`${name} maps and renders both message serializations`, () => {
+      const { prompt, variable_mapping } = (rule as any).evaluators[0].structured;
+      expect(variable_mapping[variable]).toBe(ANSWER_PATH);
+      expect(variable_mapping[`${variable}_flat`]).toBe(ANSWER_FLAT_PATH);
+      expect(prompt[0][1]).toContain(`{{${variable}}}{{${variable}_flat}}`);
+    });
+
+    it(`${name} shows the judge the answer from constructor-serialized messages`, () => {
+      const rendered = renderPrompt(rule, constructorRun);
+      expect(rendered).toContain(JSON.stringify(answer));
+      expect(rendered.split(JSON.stringify(answer))).toHaveLength(2);
+    });
+
+    it(`${name} shows the judge the answer from flat-serialized messages`, () => {
+      const rendered = renderPrompt(rule, flatRun);
+      expect(rendered).toContain(JSON.stringify(answer));
+      expect(rendered.split(JSON.stringify(answer))).toHaveLength(2);
+    });
+  }
 });
 
 describe("trajectoryRule", () => {
